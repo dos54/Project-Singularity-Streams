@@ -36,7 +36,7 @@ export const members: Member[] = [
     youtube: '@soycake',
   },
   {
-    alias: '3ricbae',
+    alias: 'Three',
     youtube: '@3ricbae',
   },
   {

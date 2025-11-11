@@ -1,5 +1,5 @@
 <template>
-  <v-card variant="outlined" color="primary">
+  <v-card variant="elevated" color="primary">
     <v-card-title>
       <span v-if="user.stream?.isLive" class="status-dot"></span>
       {{ user.alias }}

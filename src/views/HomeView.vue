@@ -1,6 +1,14 @@
 <template>
   <v-container fluid>
     <v-row>
+      <v-img
+        src="/project-singularity.png"
+        max-width="1000"
+        cover
+        class="ma-auto fade-edges"
+      />
+    </v-row>
+    <v-row>
       <v-col cols="4">
         <h2>Members</h2>
         <ul class="list">
@@ -46,5 +54,18 @@ onMounted(async () => {
   width: 100%;
   display: grid;
   gap: 1rem;
+}
+
+.fade-edges {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 20%,
+    black 80%,
+    transparent 100%
+  );
+
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
 }
 </style>
