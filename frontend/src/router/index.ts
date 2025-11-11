@@ -9,10 +9,19 @@ const router = createRouter({
       path: '/',
       component: MainLayout,
       children: [
-        { path: '', name: 'home', component: HomeView }
+        {
+          path: '',
+          name: 'home', component: HomeView,
+          meta: { title: 'Streamers' }
+        }
       ]
     }
   ],
+})
+
+router.afterEach((to) => {
+  const baseTitle = 'Project Singularity'
+  document.title = to.meta.title ? `${to.meta.title} | ${baseTitle}` : baseTitle
 })
 
 export default router
