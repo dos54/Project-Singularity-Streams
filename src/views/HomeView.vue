@@ -2,7 +2,7 @@
   <v-container fluid>
     <v-row>
       <v-img
-        src="/project-singularity.png"
+        :src="baseUrl + '/project-singularity.png'"
         max-width="1000"
         cover
         class="ma-auto fade-edges"
@@ -41,7 +41,7 @@ import MemberList from '@/components/MemberList.vue'
 
 const memberStore = useMemberStore()
 const { sortedMembers, isFetchingTwitch, twitchError, streamingMembers } = storeToRefs(memberStore)
-
+const baseUrl = import.meta.env.BASE_URL
 
 onMounted(async () => {
   memberStore.fetchTwitchStreams()
