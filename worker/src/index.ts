@@ -25,14 +25,51 @@ async function getAppToken(env: Env): Promise<string> {
   return cachedToken!;
 }
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+function withCors(body: BodyInit | null, init: ResponseInit = {}): Response {
+  return new Response(body, {
+    ...init,
+    headers: {
+      ...init.headers,
+      ...corsHeaders,
+    }
+  })
+}
+
+function handleOptions(request: Request): Response {
+  // Handle CORS preflight
+  const requestHeaders =
+    request.headers.get('Access-Control-Request-Headers') || ''
+
+  return new Response(null, {
+    status: 204,
+    headers: {
+      ...corsHeaders,
+      'Access-Control-Allow-Headers': requestHeaders || 'Content-Type',
+    },
+  })
+}
+
 // Default worker function
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Anything other than /twitch/live returns 404
     const url = new URL(request.url);
 
+    if (request.method === 'OPTIONS') {
+      return handleOptions(request)
+    }
+
     if (url.pathname !== '/twitch/live') {
-      return new Response('Not found', { status: 404 });
+      return withCors(JSON.stringify({ error: 'Not Found'}), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json'}
+      })
     }
 
     // Get the logins from the query params
@@ -88,7 +125,7 @@ export default {
       };
     });
 
-    return new Response(JSON.stringify(result), {
+    return withCors(JSON.stringify(result), {
       headers: { 'Content-Type': 'application/json' },
     });
   },
