@@ -33,7 +33,7 @@
       >
         YouTube
       </v-btn>
-      <v-btn
+      <!-- <v-btn
         v-if="user.discord"
         :href="user.discord"
         color="indigo"
@@ -43,7 +43,7 @@
         rel="noopener"
       >
         Discord
-      </v-btn>
+      </v-btn> -->
     </v-card-actions>
   </v-card>
 </template>

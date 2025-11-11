@@ -1,7 +1,18 @@
 <template>
   <v-app>
-    <!-- <v-app-bar app flat>
-    </v-app-bar> -->
+    <v-app-bar
+    color="primary"
+    app
+    image="/project-singularity.png"
+    height="512"
+    absolute
+    scroll-behavior="fade-image"
+    scroll-threshold="1024"
+    >
+    <!-- <template v-slot:title>
+      <h1>Project Singularity</h1>
+    </template> -->
+    </v-app-bar>
 
     <v-main class="d-flex">
       <RouterView />
