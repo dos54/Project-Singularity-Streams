@@ -54,6 +54,7 @@
 
         <section>
           <h2>Currently Streaming</h2>
+          <h3>Note: YouTube streams do not appear. This feature is planned to be added in the near future.</h3>
           <div v-if="streamingMembers.length === 0">Sorry, no one is streaming at the moment</div>
           <ul v-else class="list">
             <li v-for="member in streamingMembers" :key="member.alias">
