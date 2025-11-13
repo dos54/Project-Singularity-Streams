@@ -18,8 +18,9 @@
         </ul>
       </v-col>
       <v-col cols="8">
-        <h2>Live on Twitch</h2>
-        <ul class="list">
+        <h2>Currently Streaming</h2>
+        <div v-if="streamingMembers.length === 0">Sorry, no one is streaming at the moment</div>
+        <ul v-else class="list">
           <li v-for="member in streamingMembers" :key="member.alias">
             <StreamingList :user="member" />
           </li>
