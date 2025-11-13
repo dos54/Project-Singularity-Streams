@@ -1,12 +1,15 @@
+import { XMLParser } from 'fast-xml-parser'
+
 export interface Env {
   TWITCH_CLIENT_ID: string
   TWITCH_CLIENT_SECRET: string
   YOUTUBE_API_KEY: string
 }
 
-const YOUTUBE_TTL = 300 // seconds
+const YOUTUBE_TTL = 300 // live status cache (seconds)
+const UPLOAD_TTL_SECONDS = 60 // latest uploads cache (seconds)
 
-const VALID_PATHS = ['/live', '/twitch/live', '/youtube/live']
+const VALID_PATHS = ['/live', '/twitch/live', '/youtube/live', '/youtube/uploads']
 
 let cachedToken: string | null = null
 let tokenExpiresAt = 0
@@ -132,7 +135,7 @@ async function fetchTwitchData(logins: string[], env: Env): Promise<TwitchResult
   })
 }
 
-// ---------- YouTube ----------
+// ---------- YouTube live status (Data API) ----------
 
 export type YoutubeChannelResult = {
   channelId: string
@@ -241,7 +244,7 @@ async function fetchYoutubeDataWithCache(
   // Normalized cache key: same set of channels -> same key
   const sorted = [...channelIds].sort()
   const cacheUrl = new URL(requestUrl.toString())
-  cacheUrl.pathname = '/__youtube_cache'
+  cacheUrl.pathname = '/__youtube_cache_live'
   cacheUrl.search = `?channels=${encodeURIComponent(sorted.join(','))}`
   const cacheKey = new Request(cacheUrl.toString(), { method: 'GET' })
   const cache = caches.default
@@ -260,6 +263,111 @@ async function fetchYoutubeDataWithCache(
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': `public, max-age=${YOUTUBE_TTL}`,
+    },
+  })
+
+  ctx.waitUntil(cache.put(cacheKey, cacheResp.clone()))
+
+  return results
+}
+
+// ---------- YouTube latest uploads (Atom feed + XML) ----------
+
+type YoutubeFeedEntry = {
+  'yt:videoId'?: string
+  title?: string
+  published?: string
+  link?: { href?: string }
+}
+
+type YoutubeFeed = {
+  feed?: {
+    entry?: YoutubeFeedEntry[]
+  }
+}
+
+type YoutubeUploadsResult = {
+  channelId: string
+  latest: YoutubeFeedEntry[]
+}
+
+type YoutubeUploadsCacheEntry = {
+  timestamp: number
+  data: YoutubeUploadsResult[]
+}
+
+async function getLatestVideo(channelId: string): Promise<YoutubeFeedEntry[]> {
+  const url = new URL('https://www.youtube.com/feeds/videos.xml')
+  url.searchParams.set('channel_id', channelId)
+  const res = await fetch(url.toString())
+
+  if (!res.ok) {
+    throw new Error(`Error fetching channel uploads: status=${res.status}`)
+  }
+
+  const xml = await res.text()
+  const parser = new XMLParser()
+
+  const data = parser.parse(xml) as YoutubeFeed
+  const entries = data.feed?.entry ?? []
+  // Return only the latest entry (if any)
+  return entries.slice(0, 1)
+}
+
+async function getLatestVideosForChannels(channelIds: string[]): Promise<YoutubeUploadsResult[]> {
+  const results = await Promise.all(
+    channelIds.map(async (id) => {
+      try {
+        const latest = await getLatestVideo(id)
+        return { channelId: id, latest }
+      } catch {
+        // Prevent one channel failure from killing the whole batch
+        return { channelId: id, latest: [] }
+      }
+    }),
+  )
+
+  return results
+}
+
+async function fetchYoutubeUploadsWithCache(
+  channelIds: string[],
+  ctx: ExecutionContext,
+  requestUrl: URL,
+): Promise<YoutubeUploadsResult[]> {
+  if (!channelIds.length) return []
+
+  const sorted = [...channelIds].sort()
+  const cacheUrl = new URL(requestUrl.toString())
+  cacheUrl.pathname = '/__youtube_cache_uploads'
+  cacheUrl.search = `?channels=${encodeURIComponent(sorted.join(','))}`
+
+  const cacheKey = new Request(cacheUrl.toString(), { method: 'GET' })
+  const cache = caches.default
+
+  const now = Date.now()
+  const cached = await cache.match(cacheKey)
+  if (cached) {
+    try {
+      const cachedEntry = (await cached.json()) as YoutubeUploadsCacheEntry
+      if (now - cachedEntry.timestamp < UPLOAD_TTL_SECONDS * 1000) {
+        return cachedEntry.data
+      }
+    } catch {
+      // corrupted cache; ignore and refetch
+    }
+  }
+
+  const results = await getLatestVideosForChannels(sorted)
+
+  const entry: YoutubeUploadsCacheEntry = {
+    timestamp: now,
+    data: results,
+  }
+
+  const cacheResp = new Response(JSON.stringify(entry), {
+    headers: {
+      'Content-Type': 'application/json',
     },
   })
 
@@ -312,6 +420,18 @@ export default {
 
         const youtube = await fetchYoutubeDataWithCache(channels, env, ctx, url)
         return withCors(JSON.stringify({ youtube }))
+      }
+
+      if (url.pathname === '/youtube/uploads') {
+        const channels = parseYoutubeChannels(url)
+        if (!channels.length) {
+          return withCors(JSON.stringify({ error: 'No YouTube channels provided' }), {
+            status: 400,
+          })
+        }
+
+        const uploads = await fetchYoutubeUploadsWithCache(channels, ctx, url)
+        return withCors(JSON.stringify({ uploads }), { status: 200 })
       }
 
       // Combined endpoint: /live?twitch=...&youtube=...
