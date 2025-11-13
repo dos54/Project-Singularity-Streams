@@ -2,95 +2,330 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { members as staticMembers, type Member } from '@/data/members'
 
-// The data fetched from Twitch
-interface StreamInfo {
+export interface StreamInfo {
   login: string
   isLive: boolean
-  title?: string
-  gameName?: string
-  viewerCount?: number
+  title: string | null
+  gameName: string | null
+  viewerCount: number | null
+}
+
+export interface YoutubeVideoInfo {
+  videoId: string
+  title: string | null
+  publishedAt: string | null
+  thumbnailUrl: string | null
+}
+
+export interface YoutubeStatus {
+  channelId: string
+  latestVideo: YoutubeVideoInfo | null
+  live: {
+    isLive: boolean
+    videoId: string | null
+    title: string | null
+    thumbnailUrl: string | null
+  }
+}
+
+export interface LiveApiResponse {
+  twitch: StreamInfo[] | null
+  youtube: YoutubeStatus[] | null
 }
 
 export type MemberWithStream = Member & {
   stream?: StreamInfo | null
+  youtubeStatus?: YoutubeStatus | null
 }
 
-// Livetime (ms) of the store
-const TWITCH_TTL_MS = 60_000
+interface YoutubeFeedEntryDTO {
+  'yt:videoId'?: string
+  title?: string
+  published?: string
+  link?: { href?: string }
+}
+
+interface UploadApiEntry {
+  channelId: string
+  latest: YoutubeFeedEntryDTO[]
+}
+
+interface UploadApiResponse {
+  uploads: UploadApiEntry[]
+}
+
+export interface MemberLatestVideo {
+  member: Member
+  video: YoutubeVideoInfo
+}
+
+const STATUS_TTL_MS = 60_000
+const UPLOAD_TTL_MS = 60_000
+const CACHE_KEY = 'memberStatusCache_v1'
+const UPLOAD_CACHE_KEY = 'memberUploadsCache_v1'
+const WORKER_BASE_URL = 'https://twitch-proxy.dragonofshame.workers.dev'
+
+interface UploadCachePayload {
+  timestamp: number,
+  uploads: Record<string, YoutubeVideoInfo>
+}
+
+interface StatusCachePayload {
+  timestamp: number
+  twitch: Record<string, StreamInfo>
+  youtube: Record<string, YoutubeStatus>
+}
 
 export const useMemberStore = defineStore('members', () => {
   const members = ref<Member[]>(staticMembers)
 
   const streamsByLogin = ref<Record<string, StreamInfo>>({})
-  const lastTwitchFetch = ref<number | null>(null)
-  const isFetchingTwitch = ref(false)
-  const twitchError = ref<Error | null>(null)
+  const youtubeByChannelId = ref<Record<string, YoutubeStatus>>({})
+  const lastStatusFetch = ref<number | null>(null)
+  const isFetchingStatus = ref(false)
+  const statusError = ref<Error | null>(null)
+
+  const latestVideoByChannelId = ref<Record<string, YoutubeVideoInfo>>({})
+  const lastUploadsFetch = ref<number | null>(null)
+  const isFetchingUploads = ref(false)
+  const uploadsError = ref<Error | null>(null)
+
+  // Hydrate from localStorage on client
+  if (typeof window !== 'undefined') {
+    const raw = window.localStorage.getItem(CACHE_KEY)
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as StatusCachePayload
+        const now = Date.now()
+        if (now - parsed.timestamp < STATUS_TTL_MS) {
+          streamsByLogin.value = parsed.twitch
+          youtubeByChannelId.value = parsed.youtube
+          lastStatusFetch.value = parsed.timestamp
+        }
+      } catch {
+        // Ignore corrupt cache
+      }
+    }
+
+    const rawUploads = window.localStorage.getItem(UPLOAD_CACHE_KEY)
+    if (rawUploads) {
+      try {
+        const parsed = JSON.parse(rawUploads) as UploadCachePayload
+        const now = Date.now()
+        if (now - parsed.timestamp < UPLOAD_TTL_MS) {
+          latestVideoByChannelId.value = parsed.uploads
+          lastUploadsFetch.value = parsed.timestamp
+        }
+      } catch {
+
+      }
+    }
+  }
 
   const membersWithStreams = computed<MemberWithStream[]>(() =>
     members.value.map((m) => {
-      const stream = m.twitch ? streamsByLogin.value[m.twitch] ?? null : null
-      return { ...m, stream }
-    })
+      const stream = m.twitch ? (streamsByLogin.value[m.twitch] ?? null) : null
+      const youtubeStatus =
+        m.youtubeId && m.youtubeId.trim().length > 0
+          ? (youtubeByChannelId.value[m.youtubeId] ?? null)
+          : null
+      return { ...m, stream, youtubeStatus }
+    }),
   )
 
   const sortedMembers = computed<MemberWithStream[]>(() =>
-    [...members.value].sort(
-      (a, b) => a.alias.toLowerCase().localeCompare(b.alias.toLowerCase()),
-    )
+    [...membersWithStreams.value].sort((a, b) =>
+      a.alias.toLowerCase().localeCompare(b.alias.toLowerCase()),
+    ),
   )
 
   const streamingMembers = computed<MemberWithStream[]>(() =>
-    [...membersWithStreams.value].filter((m) => m.stream?.isLive)
+    membersWithStreams.value.filter((m) => m.stream?.isLive || m.youtubeStatus?.live.isLive),
   )
 
-  async function fetchTwitchStreams(force = false): Promise<void> {
+  const membersByLatestUpload = computed<MemberLatestVideo[]>(() => {
+    const result: MemberLatestVideo[] = []
+
+    for (const m of members.value) {
+      if (!m.youtubeId) continue
+      const video = latestVideoByChannelId.value[m.youtubeId]
+      if (!video || !video.publishedAt) continue
+      result.push({ member: m, video })
+    }
+
+    return result.sort((a, b) => {
+      const aTime = Date.parse(a.video.publishedAt ?? '') || 0
+      const bTime = Date.parse(b.video.publishedAt ?? '') || 0
+      return bTime - aTime
+    })
+  })
+
+  async function refreshStatus(force = false): Promise<void> {
     const now = Date.now()
-    if (!force && lastTwitchFetch.value && now - lastTwitchFetch.value < TWITCH_TTL_MS) {
+    if (!force && lastStatusFetch.value !== null && now - lastStatusFetch.value < STATUS_TTL_MS) {
       return
     }
 
     const twitchLogins = members.value
       .map((m) => m.twitch)
-      .filter((t): t is string => !!t)
+      .filter((t): t is string => !!t && t.trim().length > 0)
 
-    if (twitchLogins.length === 0) return
+    const youtubeIds = members.value
+      .map((m) => m.youtubeId)
+      .filter((id): id is string => !!id && id.trim().length > 0)
 
-    isFetchingTwitch.value = true
-    twitchError.value = null
+    if (twitchLogins.length === 0 && youtubeIds.length === 0) {
+      return
+    }
+
+    isFetchingStatus.value = true
+    statusError.value = null
 
     try {
-      const csv = twitchLogins.join(',')
-      const res = await fetch(
-        `https://twitch-proxy.dragonofshame.workers.dev/twitch/live?logins=${csv}`,
-      )
+      const params = new URLSearchParams()
+      if (twitchLogins.length > 0) {
+        params.set('twitch', twitchLogins.join(','))
+      }
+      if (youtubeIds.length > 0) {
+        // params.set('youtube', youtubeIds.join(','))
+      }
+
+      const res = await fetch(`${WORKER_BASE_URL}/live?${params.toString()}`)
 
       if (!res.ok) {
-        throw new Error(`Failed to fetch streams: ${res.status}`)
+        throw new Error(`Failed to fetch status: ${res.status}`)
       }
 
-      const streams: StreamInfo[] = await res.json()
-      const map: Record<string, StreamInfo> = {}
+      const data = (await res.json()) as LiveApiResponse
 
-      for (const s of streams) {
-        map[s.login] = s
+      const twitchMap: Record<string, StreamInfo> = {}
+      if (data.twitch) {
+        for (const s of data.twitch) {
+          twitchMap[s.login] = {
+            login: s.login,
+            isLive: s.isLive,
+            title: s.title ?? null,
+            gameName: s.gameName ?? null,
+            viewerCount: s.viewerCount ?? null,
+          }
+        }
       }
 
-      streamsByLogin.value = map
-      lastTwitchFetch.value = now
+      const youtubeMap: Record<string, YoutubeStatus> = {}
+      if (data.youtube) {
+        for (const y of data.youtube) {
+          youtubeMap[y.channelId] = {
+            channelId: y.channelId,
+            latestVideo: y.latestVideo
+              ? {
+                  videoId: y.latestVideo.videoId,
+                  title: y.latestVideo.title,
+                  publishedAt: y.latestVideo.publishedAt,
+                  thumbnailUrl: y.latestVideo.thumbnailUrl,
+                }
+              : null,
+            live: {
+              isLive: y.live.isLive,
+              videoId: y.live.videoId,
+              title: y.live.title,
+              thumbnailUrl: y.live.thumbnailUrl,
+            },
+          }
+        }
+      }
+
+      streamsByLogin.value = twitchMap
+      youtubeByChannelId.value = youtubeMap
+      lastStatusFetch.value = now
+
+      if (typeof window !== 'undefined') {
+        const payload: StatusCachePayload = {
+          timestamp: now,
+          twitch: twitchMap,
+          youtube: youtubeMap,
+        }
+        window.localStorage.setItem(CACHE_KEY, JSON.stringify(payload))
+      }
     } catch (e) {
-      twitchError.value = e instanceof Error ? e: new Error('Unknown error')
+      statusError.value = e instanceof Error ? e : new Error('Unknown error while fetching status')
     } finally {
-      isFetchingTwitch.value = false
+      isFetchingStatus.value = false
     }
   }
+
+  async function fetchLatestUploads(force = false): Promise<void> {
+    const now = Date.now()
+    if (!force && lastUploadsFetch.value !== null && now - lastUploadsFetch.value < UPLOAD_TTL_MS) {
+      return
+    }
+
+    const youtubeIds = members.value
+      .map((m) => m.youtubeId)
+      .filter((id): id is string => !!id && id.trim().length > 0)
+
+    if (youtubeIds.length === 0) return
+
+    isFetchingUploads.value = true
+    uploadsError.value = null
+
+    try {
+      const params = new URLSearchParams()
+      params.set('youtube', youtubeIds.join(','))
+
+      const res = await fetch(`${WORKER_BASE_URL}/youtube/uploads?${params.toString()}`)
+
+      if (!res.ok) {
+        throw new Error(`Failed to fetch uploads: ${res.status}`)
+      }
+
+      const data = (await res.json()) as UploadApiResponse
+
+      const map: Record<string, YoutubeVideoInfo> = {}
+
+      for (const entry of data.uploads) {
+        const latest = entry.latest[0]
+        if (!latest || !latest['yt:videoId']) continue
+
+        map[entry.channelId] = {
+          videoId: latest['yt:videoId'],
+          title: latest.title ?? null,
+          publishedAt: latest.published ?? null,
+          // You can derive a thumbnail yourself later if needed
+          thumbnailUrl: null,
+        }
+      }
+
+      latestVideoByChannelId.value = map
+      lastUploadsFetch.value = now
+
+      if (typeof window !== 'undefined') {
+        const payload: UploadCachePayload = {
+          timestamp: now,
+          uploads: map,
+        }
+        window.localStorage.setItem(UPLOAD_CACHE_KEY, JSON.stringify(payload))
+      }
+
+    } catch (e) {
+      uploadsError.value =
+        e instanceof Error ? e : new Error('Unknown error while fetching uploads')
+    } finally {
+      isFetchingUploads.value = false
+    }  }
 
   return {
     members,
     membersWithStreams,
     sortedMembers,
-    isFetchingTwitch,
-    twitchError,
     streamingMembers,
-    fetchTwitchStreams,
+    isFetchingStatus,
+    statusError,
+    refreshStatus,
+
+    latestVideoByChannelId,
+    membersByLatestUpload,
+    isFetchingUploads,
+    uploadsError,
+    fetchLatestUploads,
   }
 })
