@@ -55,7 +55,12 @@ async function getAppToken(env: Env): Promise<string> {
   })
 
   if (!resp.ok) throw new Error(`Token error: ${resp.status}`)
-  const json = await resp.json()
+
+  const json = (await resp.json()) as {
+    access_token: string
+    expires_in: number
+  }
+
   cachedToken = json.access_token
   tokenExpiresAt = Date.now() + json.expires_in * 1000
   return cachedToken!
@@ -63,12 +68,23 @@ async function getAppToken(env: Env): Promise<string> {
 
 // ---------- Twitch ----------
 
-type TwitchResult = {
+export type TwitchResult = {
   login: string
   isLive: boolean
   title: string | null
   gameName: string | null
   viewerCount: number | null
+}
+
+type TwitchAPIStream = {
+  user_login: string
+  title?: string
+  game_name?: string
+  viewer_count?: number
+}
+
+type TwitchAPIResponse = {
+  data?: TwitchAPIStream[]
 }
 
 function parseTwitchLogins(url: URL): string[] {
@@ -77,7 +93,7 @@ function parseTwitchLogins(url: URL): string[] {
   return raw
     .split(',')
     .map((s) => s.trim())
-    .filter(Boolean)
+    .filter((s) => s.length > 0)
 }
 
 async function fetchTwitchData(logins: string[], env: Env): Promise<TwitchResult[]> {
@@ -97,17 +113,18 @@ async function fetchTwitchData(logins: string[], env: Env): Promise<TwitchResult
     throw new Error(`Twitch error: ${twitchResp.status}`)
   }
 
-  const body = await twitchResp.json()
-  const liveMap = new Map<string, any>()
+  const body = (await twitchResp.json()) as TwitchAPIResponse
+  const liveMap = new Map<string, TwitchAPIStream>()
+
   for (const s of body.data ?? []) {
-    liveMap.set(String(s.user_login).toLowerCase(), s)
+    liveMap.set(s.user_login.toLowerCase(), s)
   }
 
   return logins.map((login) => {
     const stream = liveMap.get(login.toLowerCase())
     return {
       login,
-      isLive: !!stream,
+      isLive: stream !== undefined,
       title: stream?.title ?? null,
       gameName: stream?.game_name ?? null,
       viewerCount: stream?.viewer_count ?? null,
@@ -117,16 +134,8 @@ async function fetchTwitchData(logins: string[], env: Env): Promise<TwitchResult
 
 // ---------- YouTube ----------
 
-type YoutubeVideoInfo = {
-  videoId: string
-  title: string | null
-  publishedAt: string | null
-  thumbnailUrl: string | null
-}
-
-type YoutubeChannelResult = {
+export type YoutubeChannelResult = {
   channelId: string
-  latestVideo: YoutubeVideoInfo | null
   live: {
     isLive: boolean
     videoId: string | null
@@ -135,17 +144,42 @@ type YoutubeChannelResult = {
   }
 }
 
+type YoutubeThumbnail = {
+  url?: string
+}
+
+type YoutubeSnippetThumbnails = {
+  default?: YoutubeThumbnail
+  medium?: YoutubeThumbnail
+  high?: YoutubeThumbnail
+}
+
+type YoutubeSearchSnippet = {
+  title?: string
+  thumbnails?: YoutubeSnippetThumbnails
+}
+
+type YoutubeSearchItem = {
+  id?: { videoId?: string }
+  snippet?: YoutubeSearchSnippet
+}
+
+type YoutubeSearchResponse = {
+  items?: YoutubeSearchItem[]
+}
+
 function parseYoutubeChannels(url: URL): string[] {
   // Support ?youtube=UC...,UC... and ?channels=...
   const raw = url.searchParams.get('youtube') ?? url.searchParams.get('channels') ?? ''
   return raw
     .split(',')
     .map((s) => s.trim())
-    .filter(Boolean)
+    .filter((s) => s.length > 0)
 }
 
-function buildThumbnail(snippet: any): string | null {
-  const thumbs = snippet?.thumbnails ?? {}
+function buildThumbnail(snippet?: YoutubeSearchSnippet): string | null {
+  const thumbs: YoutubeSnippetThumbnails | undefined = snippet?.thumbnails
+  if (!thumbs) return null
   return thumbs.medium?.url ?? thumbs.default?.url ?? thumbs.high?.url ?? null
 }
 
@@ -153,64 +187,47 @@ async function fetchYoutubeForChannel(
   channelId: string,
   apiKey: string,
 ): Promise<YoutubeChannelResult> {
-  const base = 'https://www.googleapis.com/youtube/v3/search'
+  const url = new URL('https://www.googleapis.com/youtube/v3/search')
+  url.searchParams.set('part', 'snippet')
+  url.searchParams.set('channelId', channelId)
+  url.searchParams.set('eventType', 'live')
+  url.searchParams.set('type', 'video')
+  url.searchParams.set('maxResults', '1')
+  url.searchParams.set('key', apiKey)
 
-  // 1) Latest video (by date)
-  const latestUrl = new URL(base)
-  latestUrl.searchParams.set('part', 'snippet')
-  latestUrl.searchParams.set('channelId', channelId)
-  latestUrl.searchParams.set('maxResults', '1')
-  latestUrl.searchParams.set('order', 'date')
-  latestUrl.searchParams.set('type', 'video')
-  latestUrl.searchParams.set('key', apiKey)
+  const res = await fetch(url.toString())
 
-  // 2) Live video (if any)
-  const liveUrl = new URL(base)
-  liveUrl.searchParams.set('part', 'snippet')
-  liveUrl.searchParams.set('channelId', channelId)
-  liveUrl.searchParams.set('eventType', 'live')
-  liveUrl.searchParams.set('type', 'video')
-  liveUrl.searchParams.set('key', apiKey)
-
-  const [latestRes, liveRes] = await Promise.all([
-    fetch(latestUrl.toString()),
-    fetch(liveUrl.toString()),
-  ])
-
-  if (!latestRes.ok || !liveRes.ok) {
-    throw new Error(`YouTube error: latest=${latestRes.status}, live=${liveRes.status}`)
+  if (!res.ok) {
+    throw new Error(`YouTube error: status=${res.status}`)
   }
 
-  const latestJson: any = await latestRes.json()
-  const liveJson: any = await liveRes.json()
+  const json = (await res.json()) as YoutubeSearchResponse
+  const item = json.items?.[0]
 
-  const latestItem = latestJson.items?.[0]
-  const liveItem = liveJson.items?.[0]
+  const videoId = item?.id?.videoId ?? null
+  const snippet = item?.snippet
 
-  const latestVideo: YoutubeVideoInfo | null = latestItem
-    ? {
-        videoId: latestItem.id?.videoId ?? '',
-        title: latestItem.snippet?.title ?? null,
-        publishedAt: latestItem.snippet?.publishedAt ?? null,
-        thumbnailUrl: buildThumbnail(latestItem.snippet),
-      }
-    : null
-
-  const live = liveItem
-    ? {
-        isLive: true,
-        videoId: liveItem.id?.videoId ?? null,
-        title: liveItem.snippet?.title ?? null,
-        thumbnailUrl: buildThumbnail(liveItem.snippet),
-      }
-    : {
+  if (!videoId) {
+    return {
+      channelId,
+      live: {
         isLive: false,
         videoId: null,
         title: null,
         thumbnailUrl: null,
-      }
+      },
+    }
+  }
 
-  return { channelId, latestVideo, live }
+  return {
+    channelId,
+    live: {
+      isLive: true,
+      videoId,
+      title: snippet?.title ?? null,
+      thumbnailUrl: buildThumbnail(snippet),
+    },
+  }
 }
 
 async function fetchYoutubeDataWithCache(
@@ -253,6 +270,11 @@ async function fetchYoutubeDataWithCache(
 
 // ---------- Worker entry ----------
 
+type LiveErrors = {
+  twitch?: string
+  youtube?: string
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
@@ -271,7 +293,9 @@ export default {
       if (url.pathname === '/twitch/live') {
         const logins = parseTwitchLogins(url)
         if (!logins.length) {
-          return withCors(JSON.stringify({ error: 'No Twitch logins provided' }), { status: 400 })
+          return withCors(JSON.stringify({ error: 'No Twitch logins provided' }), {
+            status: 400,
+          })
         }
 
         const twitch = await fetchTwitchData(logins, env)
@@ -304,25 +328,66 @@ export default {
           )
         }
 
-        const [twitch, youtube] = await Promise.all([
-          logins.length ? fetchTwitchData(logins, env) : Promise.resolve(null),
-          channels.length
-            ? fetchYoutubeDataWithCache(channels, env, ctx, url)
-            : Promise.resolve(null),
-        ])
+        let twitch: TwitchResult[] | null = null
+        let youtube: YoutubeChannelResult[] | null = null
+        const errors: LiveErrors = {}
 
-        return withCors(JSON.stringify({ twitch, youtube }))
+        if (logins.length) {
+          try {
+            twitch = await fetchTwitchData(logins, env)
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e)
+            errors.twitch = msg
+            twitch = null
+          }
+        }
+
+        if (channels.length) {
+          try {
+            youtube = await fetchYoutubeDataWithCache(channels, env, ctx, url)
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e)
+            errors.youtube = msg
+            youtube = null
+          }
+        }
+
+        const bothFailed =
+          logins.length > 0 && twitch === null && channels.length > 0 && youtube === null
+
+        if (bothFailed) {
+          return withCors(
+            JSON.stringify({
+              error: 'Upstream error',
+              details: errors,
+            }),
+            { status: 502 },
+          )
+        }
+
+        const payload: {
+          twitch: TwitchResult[] | null
+          youtube: YoutubeChannelResult[] | null
+          errors?: LiveErrors
+        } = { twitch, youtube }
+
+        if (errors.twitch || errors.youtube) {
+          payload.errors = errors
+        }
+
+        return withCors(JSON.stringify(payload), { status: 200 })
       }
 
       // Should be unreachable because of VALID_PATHS
       return withCors(JSON.stringify({ error: 'Not Found' }), {
         status: 404,
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
       return withCors(
         JSON.stringify({
           error: 'Upstream error',
-          message: String(err?.message ?? err),
+          message,
         }),
         { status: 502 },
       )
