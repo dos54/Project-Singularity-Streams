@@ -9,7 +9,7 @@
       />
     </v-row>
 
-        <!-- Mobile drawer for members -->
+    <!-- Mobile drawer for members -->
     <v-navigation-drawer
       v-model="membersDrawer"
       location="left"
@@ -28,10 +28,7 @@
       <v-divider />
 
       <v-list>
-        <v-list-item
-          v-for="member in sortedMembers"
-          :key="member.alias"
-        >
+        <v-list-item v-for="member in sortedMembers" :key="member.alias">
           <MemberList :user="member" />
         </v-list-item>
       </v-list>
@@ -50,11 +47,7 @@
       <v-col cols="12" md="8">
         <!-- Mobile: button to open drawer -->
         <div class="d-flex justify-start mb-4 d-md-none">
-          <v-btn
-            variant="outlined"
-            color="primary"
-            @click="membersDrawer = true"
-          >
+          <v-btn variant="outlined" color="primary" @click="membersDrawer = true">
             Show Members
           </v-btn>
         </div>
@@ -72,19 +65,14 @@
         </section>
         <br />
         <section>
-          <h2>
-            Latest Videos
-          </h2>
-          <div v-if="sortedMembers.length === 0">
-            There appears to be no members...
-          </div>
+          <h2>Latest Videos</h2>
+          <div v-if="sortedMembers.length === 0">There appears to be no members...</div>
           <ul v-else class="list">
             <li v-for="item in memberStore.membersByLatestUpload" :key="item.video.videoId">
               <NewVideoList :item="item" />
             </li>
           </ul>
         </section>
-
       </v-col>
     </v-row>
   </v-container>
@@ -118,13 +106,7 @@ onMounted(async () => {
 }
 
 .fade-edges {
-  mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    black 20%,
-    black 80%,
-    transparent 100%
-  );
+  mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
 
   mask-repeat: no-repeat;
   mask-size: 100% 100%;

@@ -14,9 +14,7 @@
       <div v-if="user.stream?.isLive">
         LIVE to {{ user.stream.viewerCount ?? 0 }} viewers on Twitch
       </div>
-      <div v-if="user.youtubeStatus?.live.isLive">
-        LIVE on YouTube
-      </div>
+      <div v-if="user.youtubeStatus?.live.isLive">LIVE on YouTube</div>
     </v-card-text>
 
     <v-card-actions>

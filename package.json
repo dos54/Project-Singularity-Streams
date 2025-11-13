@@ -16,7 +16,8 @@
     "lint:oxlint": "oxlint . --fix -D correctness --ignore-path .gitignore",
     "lint:eslint": "eslint . --fix --cache",
     "lint": "run-s lint:*",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "build-and-publish": "run-p type-check \"build-only {@}\" -- && git add dist && git commit -m 'Updating subtree' && git subtree push --prefix dist origin gh-pages"
   },
   "dependencies": {
     "@fontsource/roboto": "^5.2.8",

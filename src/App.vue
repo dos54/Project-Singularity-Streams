@@ -11,20 +11,20 @@
       <RouterView />
     </v-main>
 
-    <v-footer
-      app
-      class="pa-4"
-    >
-    <div class="github-link">
-      <span>Suggestions? Ideas? Reach out on&nbsp;</span>
-      <a href="https://github.com/dos54/Project-Singularity-Streams" target="_blank" rel="noopener" >
-        GitHub
-        <v-icon icon="fa-brands fa-github" />
-      </a>
-    </div>
+    <v-footer app class="pa-4">
+      <div class="github-link">
+        <span>Suggestions? Ideas? Reach out on&nbsp;</span>
+        <a
+          href="https://github.com/dos54/Project-Singularity-Streams"
+          target="_blank"
+          rel="noopener"
+        >
+          GitHub
+          <v-icon icon="fa-brands fa-github" />
+        </a>
+      </div>
     </v-footer>
   </v-app>
-
 </template>
 
 <script setup lang="ts">

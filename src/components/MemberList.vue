@@ -34,5 +34,4 @@ import type { Member } from '@/data/members'
 defineProps<{
   user: Member
 }>()
-
 </script>

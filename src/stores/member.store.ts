@@ -66,7 +66,7 @@ const UPLOAD_CACHE_KEY = 'memberUploadsCache_v1'
 const WORKER_BASE_URL = 'https://twitch-proxy.dragonofshame.workers.dev'
 
 interface UploadCachePayload {
-  timestamp: number,
+  timestamp: number
   uploads: Record<string, YoutubeVideoInfo>
 }
 
@@ -116,9 +116,7 @@ export const useMemberStore = defineStore('members', () => {
           latestVideoByChannelId.value = parsed.uploads
           lastUploadsFetch.value = parsed.timestamp
         }
-      } catch {
-
-      }
+      } catch {}
     }
   }
 
@@ -305,13 +303,13 @@ export const useMemberStore = defineStore('members', () => {
         }
         window.localStorage.setItem(UPLOAD_CACHE_KEY, JSON.stringify(payload))
       }
-
     } catch (e) {
       uploadsError.value =
         e instanceof Error ? e : new Error('Unknown error while fetching uploads')
     } finally {
       isFetchingUploads.value = false
-    }  }
+    }
+  }
 
   return {
     members,

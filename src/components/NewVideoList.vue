@@ -29,12 +29,11 @@ const formattedDate = computed(() => {
   const p = props.item.video.publishedAt
   if (!p) return ''
   try {
-    return new Date(p).toLocaleString()  // user’s locale + timezone
+    return new Date(p).toLocaleString() // user’s locale + timezone
   } catch {
     return p
   }
 })
-
 </script>
 
 <style scoped>
@@ -44,6 +43,5 @@ const formattedDate = computed(() => {
 }
 
 .video-card {
-
 }
 </style>
