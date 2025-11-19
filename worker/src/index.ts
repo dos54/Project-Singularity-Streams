@@ -4,6 +4,7 @@ export interface Env {
   TWITCH_CLIENT_ID: string
   TWITCH_CLIENT_SECRET: string
   YOUTUBE_API_KEY: string
+  KV: string
 }
 
 const YOUTUBE_TTL = 300 // live status cache (seconds)
@@ -385,8 +386,6 @@ type LiveErrors = {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const rando = crypto.randomUUID()
-    await env.KV.put(rando, 'hehe')
     const url = new URL(request.url)
 
     if (request.method === 'OPTIONS') {
