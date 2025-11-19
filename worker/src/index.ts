@@ -385,6 +385,8 @@ type LiveErrors = {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const rando = crypto.randomUUID()
+    await env.KV.put(rando, 'hehe')
     const url = new URL(request.url)
 
     if (request.method === 'OPTIONS') {

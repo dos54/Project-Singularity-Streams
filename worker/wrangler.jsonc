@@ -1,0 +1,19 @@
+{
+  "name": "twitch-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-10",
+  "observability": {
+    "enabled": true
+  },
+
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "ca8c1e0ae03e415a9057b36893376560"
+    }
+  ],
+
+  "vars": {
+    "TWITCH_CLIENT_ID": "bjrunh046oko3ckz2rl4bijz88xiow",
+  },
+}
