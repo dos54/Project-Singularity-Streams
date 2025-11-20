@@ -17,6 +17,10 @@ export interface YoutubeVideoInfo {
   thumbnailUrl: string | null
 }
 
+export interface YoutubeVideoWithChannel extends YoutubeVideoInfo {
+  channelId: string
+}
+
 export interface YoutubeStatus {
   channelId: string
   latestVideo: YoutubeVideoInfo | null
@@ -25,33 +29,56 @@ export interface YoutubeStatus {
     videoId: string | null
     title: string | null
     thumbnailUrl: string | null
+    viewerCount?: number | null
+  }
+}
+
+export interface LiveYoutubeEntry {
+  videoId: string
+  title?: string
+  published?: string
+  link?: string
+  author?: {
+    name?: string
+    uri?: string
+  }
+  thumbnailUrl?: string
+  thumbnailWidth?: string
+  thumbnailHeight?: string
+  liveStatus?: {
+    state: 'live' | 'ended' | 'video' | 'inactive'
+    lastChecked: number
+    actualStartTime?: string
+    actualEndTime?: string
+    concurrentViewers?: string
   }
 }
 
 export interface LiveApiResponse {
   twitch: StreamInfo[] | null
-  youtube: YoutubeStatus[] | null
+  youtube: LiveYoutubeEntry[] | null
+}
+
+
+// /youtube/uploads response
+interface UploadApiEntry {
+  videoId: string
+  title?: string
+  published?: string
+  thumbnailUrl?: string
+  author?: {
+    name?: string
+    uri?: string
+  }
+}
+
+interface UploadApiResponse {
+  uploads: UploadApiEntry[]
 }
 
 export type MemberWithStream = Member & {
   stream?: StreamInfo | null
   youtubeStatus?: YoutubeStatus | null
-}
-
-interface YoutubeFeedEntryDTO {
-  'yt:videoId'?: string
-  title?: string
-  published?: string
-  link?: { href?: string }
-}
-
-interface UploadApiEntry {
-  channelId: string
-  latest: YoutubeFeedEntryDTO[]
-}
-
-interface UploadApiResponse {
-  uploads: UploadApiEntry[]
 }
 
 export interface MemberLatestVideo {
@@ -62,7 +89,7 @@ export interface MemberLatestVideo {
 const STATUS_TTL_MS = 60_000
 const UPLOAD_TTL_MS = 60_000
 const CACHE_KEY = 'memberStatusCache_v1'
-const UPLOAD_CACHE_KEY = 'memberUploadsCache_v1'
+const UPLOAD_CACHE_KEY = 'memberUploadsCache_v2' // bumped because shape changed
 const WORKER_BASE_URL = 'https://twitch-proxy.dragonofshame.workers.dev'
 
 interface UploadCachePayload {
@@ -79,18 +106,20 @@ interface StatusCachePayload {
 export const useMemberStore = defineStore('members', () => {
   const members = ref<Member[]>(staticMembers)
 
+  // live status
   const streamsByLogin = ref<Record<string, StreamInfo>>({})
   const youtubeByChannelId = ref<Record<string, YoutubeStatus>>({})
   const lastStatusFetch = ref<number | null>(null)
   const isFetchingStatus = ref(false)
   const statusError = ref<Error | null>(null)
 
+  // uploads
   const latestVideoByChannelId = ref<Record<string, YoutubeVideoInfo>>({})
   const lastUploadsFetch = ref<number | null>(null)
   const isFetchingUploads = ref(false)
   const uploadsError = ref<Error | null>(null)
 
-  // Hydrate from localStorage on client
+  // hydrate from localStorage
   if (typeof window !== 'undefined') {
     const raw = window.localStorage.getItem(CACHE_KEY)
     if (raw) {
@@ -102,9 +131,7 @@ export const useMemberStore = defineStore('members', () => {
           youtubeByChannelId.value = parsed.youtube
           lastStatusFetch.value = parsed.timestamp
         }
-      } catch {
-        // Ignore corrupt cache
-      }
+      } catch {}
     }
 
     const rawUploads = window.localStorage.getItem(UPLOAD_CACHE_KEY)
@@ -137,6 +164,18 @@ export const useMemberStore = defineStore('members', () => {
     ),
   )
 
+  // channelId -> alias
+  const aliasByChannelId = computed<Record<string, string>>(() => {
+    const map: Record<string, string> = {}
+    for (const m of members.value) {
+      if (m.youtubeId) {
+        map[m.youtubeId] = m.alias
+      }
+    }
+    return map
+  })
+
+  // THIS is "currently streaming" = Twitch OR YouTube live
   const streamingMembers = computed<MemberWithStream[]>(() =>
     membersWithStreams.value.filter((m) => m.stream?.isLive || m.youtubeStatus?.live.isLive),
   )
@@ -158,6 +197,21 @@ export const useMemberStore = defineStore('members', () => {
     })
   })
 
+  const uploadsList = computed<YoutubeVideoWithChannel[]>(() => {
+    const result: YoutubeVideoWithChannel[] = []
+
+    for (const [channelId, video] of Object.entries(latestVideoByChannelId.value)) {
+      if (!video.publishedAt) continue
+      result.push({ ...video, channelId })
+    }
+
+    return result.sort((a, b) => {
+      const aTime = Date.parse(a.publishedAt ?? '') || 0
+      const bTime = Date.parse(b.publishedAt ?? '') || 0
+      return bTime - aTime
+    })
+  })
+
   async function refreshStatus(force = false): Promise<void> {
     const now = Date.now()
     if (!force && lastStatusFetch.value !== null && now - lastStatusFetch.value < STATUS_TTL_MS) {
@@ -172,9 +226,7 @@ export const useMemberStore = defineStore('members', () => {
       .map((m) => m.youtubeId)
       .filter((id): id is string => !!id && id.trim().length > 0)
 
-    if (twitchLogins.length === 0 && youtubeIds.length === 0) {
-      return
-    }
+    if (twitchLogins.length === 0 && youtubeIds.length === 0) return
 
     isFetchingStatus.value = true
     statusError.value = null
@@ -185,11 +237,10 @@ export const useMemberStore = defineStore('members', () => {
         params.set('twitch', twitchLogins.join(','))
       }
       if (youtubeIds.length > 0) {
-        // params.set('youtube', youtubeIds.join(','))
+        params.set('youtube', youtubeIds.join(','))
       }
 
       const res = await fetch(`${WORKER_BASE_URL}/live?${params.toString()}`)
-
       if (!res.ok) {
         throw new Error(`Failed to fetch status: ${res.status}`)
       }
@@ -210,23 +261,25 @@ export const useMemberStore = defineStore('members', () => {
       }
 
       const youtubeMap: Record<string, YoutubeStatus> = {}
+
       if (data.youtube) {
-        for (const y of data.youtube) {
-          youtubeMap[y.channelId] = {
-            channelId: y.channelId,
-            latestVideo: y.latestVideo
-              ? {
-                  videoId: y.latestVideo.videoId,
-                  title: y.latestVideo.title,
-                  publishedAt: y.latestVideo.publishedAt,
-                  thumbnailUrl: y.latestVideo.thumbnailUrl,
-                }
-              : null,
+        for (const entry of data.youtube) {
+          const uri = entry.author?.uri ?? ''
+          const match = uri.match(/\/channel\/([^/?]+)/)
+          const channelId = match?.[1]
+          if (!channelId) continue
+
+          const isLive = entry.liveStatus?.state === 'live'
+
+          youtubeMap[channelId] = {
+            channelId,
+            latestVideo: null,
             live: {
-              isLive: y.live.isLive,
-              videoId: y.live.videoId,
-              title: y.live.title,
-              thumbnailUrl: y.live.thumbnailUrl,
+              isLive,
+              videoId: entry.videoId ?? null,
+              title: entry.title ?? null,
+              thumbnailUrl: entry.thumbnailUrl ?? null,
+              viewerCount: entry.liveStatus?.concurrentViewers ? Number(entry.liveStatus.concurrentViewers) : null
             },
           }
         }
@@ -234,6 +287,7 @@ export const useMemberStore = defineStore('members', () => {
 
       streamsByLogin.value = twitchMap
       youtubeByChannelId.value = youtubeMap
+
       lastStatusFetch.value = now
 
       if (typeof window !== 'undefined') {
@@ -271,25 +325,26 @@ export const useMemberStore = defineStore('members', () => {
       params.set('youtube', youtubeIds.join(','))
 
       const res = await fetch(`${WORKER_BASE_URL}/youtube/uploads?${params.toString()}`)
-
       if (!res.ok) {
         throw new Error(`Failed to fetch uploads: ${res.status}`)
       }
 
       const data = (await res.json()) as UploadApiResponse
-
       const map: Record<string, YoutubeVideoInfo> = {}
 
       for (const entry of data.uploads) {
-        const latest = entry.latest[0]
-        if (!latest || !latest['yt:videoId']) continue
+        if (!entry.videoId) continue
 
-        map[entry.channelId] = {
-          videoId: latest['yt:videoId'],
-          title: latest.title ?? null,
-          publishedAt: latest.published ?? null,
-          // You can derive a thumbnail yourself later if needed
-          thumbnailUrl: null,
+        const uri = entry.author?.uri ?? ''
+        const match = uri.match(/\/channel\/([^/?]+)/)
+        const channelId = match?.[1]
+        if (!channelId) continue
+
+        map[channelId] = {
+          videoId: entry.videoId,
+          title: entry.title ?? null,
+          publishedAt: entry.published ?? null,
+          thumbnailUrl: entry.thumbnailUrl ?? null,
         }
       }
 
@@ -315,13 +370,15 @@ export const useMemberStore = defineStore('members', () => {
     members,
     membersWithStreams,
     sortedMembers,
-    streamingMembers,
+    streamingMembers, // ← Twitch + YouTube live
     isFetchingStatus,
     statusError,
     refreshStatus,
 
     latestVideoByChannelId,
     membersByLatestUpload,
+    uploadsList,
+    aliasByChannelId,
     isFetchingUploads,
     uploadsError,
     fetchLatestUploads,

@@ -2,14 +2,14 @@
   <v-card
     variant="elevated"
     color="primary"
-    :href="`https://www.youtube.com/watch?v=${item.video.videoId}`"
+    :href="`https://www.youtube.com/watch?v=${video.videoId}`"
     target="_blank"
     rel="noopener"
     class="video-card"
   >
-    <v-card-title class="wrap-title">{{ item.video.title }}</v-card-title>
+    <v-card-title class="wrap-title">{{ video.title }}</v-card-title>
     <v-card-subtitle>
-      {{ item.member.alias }}
+      {{ memberAlias }}
     </v-card-subtitle>
     <v-card-text>
       {{ formattedDate }}
@@ -19,14 +19,22 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { MemberLatestVideo } from '@/stores/member.store'
+import type { YoutubeVideoWithChannel } from '@/stores/member.store'
+import { useMemberStore } from '@/stores/member.store';
+import { storeToRefs } from 'pinia';
 
 const props = defineProps<{
-  item: MemberLatestVideo
+  video: YoutubeVideoWithChannel
 }>()
 
+const memberStore = useMemberStore()
+const { aliasByChannelId } = storeToRefs(memberStore)
+const memberAlias = computed(() => {
+  return aliasByChannelId.value[props.video.channelId] ?? props.video.channelId
+})
+
 const formattedDate = computed(() => {
-  const p = props.item.video.publishedAt
+  const p = props.video.publishedAt
   if (!p) return ''
   try {
     return new Date(p).toLocaleString() // user’s locale + timezone
@@ -42,6 +50,6 @@ const formattedDate = computed(() => {
   line-height: 1.3;
 }
 
-.video-card {
-}
+/* .video-card {
+} */
 </style>

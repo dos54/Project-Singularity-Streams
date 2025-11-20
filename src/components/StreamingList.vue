@@ -5,16 +5,17 @@
       {{ user.alias }}
     </v-card-title>
 
-    <!-- Prefer Twitch title if live, otherwise YouTube live title, otherwise nothing -->
     <v-card-subtitle v-if="subtitle">
       {{ subtitle }}
     </v-card-subtitle>
 
     <v-card-text v-if="user.stream?.isLive || user.youtubeStatus?.live.isLive">
-      <div v-if="user.stream?.isLive">
+      <div v-if="user.stream?.isLive && !user.youtubeStatus?.live.isLive">
         LIVE to {{ user.stream.viewerCount ?? 0 }} viewers on Twitch
       </div>
-      <div v-if="user.youtubeStatus?.live.isLive">LIVE on YouTube</div>
+      <div v-else-if="user.youtubeStatus?.live.isLive && !user.stream?.isLive">LIVE on YouTube to {{ user.youtubeStatus.live.viewerCount }} viewers</div>
+      <div v-else-if="user.youtubeStatus?.live.isLive && user.stream?.isLive">LIVE on YouTube and Twitch to {{ (user.youtubeStatus.live.viewerCount ?? 0) + (user.stream.viewerCount ?? 0) }}</div>
+
     </v-card-text>
 
     <v-card-actions>
@@ -64,7 +65,6 @@ const props = defineProps<{
   user: UserWithStream
 }>()
 
-// Prefer Twitch live title, then YouTube live title
 const subtitle = computed<string | null>(() => {
   if (props.user.stream?.isLive && props.user.stream.title) {
     return props.user.stream.title

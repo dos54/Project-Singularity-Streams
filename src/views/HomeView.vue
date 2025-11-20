@@ -54,7 +54,6 @@
 
         <section>
           <h2>Currently Streaming</h2>
-          <h3>Note: YouTube streams do not appear. This feature is planned to be added in the near future.</h3>
           <div v-if="streamingMembers.length === 0">Sorry, no one is streaming at the moment</div>
           <ul v-else class="list">
             <li v-for="member in streamingMembers" :key="member.alias">
@@ -67,10 +66,10 @@
         <br />
         <section>
           <h2>Latest Videos</h2>
-          <div v-if="sortedMembers.length === 0">There appears to be no members...</div>
+          <div v-if="uploadsList.length === 0">There appears to be no uploads...</div>
           <ul v-else class="list">
-            <li v-for="item in memberStore.membersByLatestUpload" :key="item.video.videoId">
-              <NewVideoList :item="item" />
+            <li v-for="video in uploadsList" :key="video.videoId">
+              <NewVideoList :video="video" />
             </li>
           </ul>
         </section>
@@ -88,7 +87,7 @@ import MemberList from '@/components/MemberList.vue'
 import NewVideoList from '@/components/NewVideoList.vue'
 
 const memberStore = useMemberStore()
-const { sortedMembers, isFetchingStatus, statusError, streamingMembers } = storeToRefs(memberStore)
+const { sortedMembers, isFetchingStatus, statusError, streamingMembers, uploadsList } = storeToRefs(memberStore)
 const baseUrl = import.meta.env.BASE_URL
 const membersDrawer = ref(false)
 
