@@ -7,13 +7,15 @@ export interface VideoLiveStatus {
   lastChecked: number
   actualStartTime?: string
   actualEndTime?: string
+  concurrentViewers?: string
 }
 
 interface YoutubeVideosListItem {
   id?: string
   liveStreamingDetails?: {
-    actualStartTime?: string,
+    actualStartTime?: string
     actualEndTime?: string
+    concurrentViewers?: string
   }
 }
 
@@ -39,7 +41,7 @@ function deriveStatusFromItem(item: YoutubeVideosListItem, now: number): VideoLi
     return { state: 'video', lastChecked: now}
   }
 
-  const { actualStartTime, actualEndTime } = details
+  const { actualStartTime, actualEndTime, concurrentViewers } = details
 
   if (actualEndTime) {
     return {
@@ -54,7 +56,8 @@ function deriveStatusFromItem(item: YoutubeVideosListItem, now: number): VideoLi
     return {
       state: 'live',
       lastChecked: now,
-      actualStartTime
+      actualStartTime,
+      concurrentViewers
     }
   }
 
