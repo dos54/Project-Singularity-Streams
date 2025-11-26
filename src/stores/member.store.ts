@@ -331,6 +331,7 @@ export const useMemberStore = defineStore('members', () => {
 
       const res = await fetch(`${WORKER_BASE_URL}/youtube/uploads?${params.toString()}`, {
         headers,
+        method: 'GET'
       })
       if (!res.ok) {
         throw new Error(`Failed to fetch uploads: ${res.status}`)

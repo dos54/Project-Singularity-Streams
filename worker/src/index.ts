@@ -109,7 +109,7 @@ export default {
         return withCors(JSON.stringify({ uploads: nonLive, isStale }), {
           status: 200,
           headers: {
-            'Cache-Control': buildSWRCacheControl(UPLOAD_TTL_SECONDS, UPLOAD_TTL_SECONDS),
+            'Cache-Control': 'no-store',
           },
         })
       }
