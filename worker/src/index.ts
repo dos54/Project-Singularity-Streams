@@ -9,6 +9,7 @@ import {
   getCachedVideoList,
   annotateUploadsWithLiveStatus,
   type YoutubeFeedEntry,
+  buildAndCacheVideoList,
 } from './youtubeUploads'
 
 /**
@@ -26,6 +27,7 @@ const TWITCH_CACHE_SECONDS = 20
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const now = Date.now()
     const url = new URL(request.url)
 
     if (request.method === 'OPTIONS') {
@@ -65,17 +67,17 @@ export default {
           })
         }
 
-        const uploads: YoutubeFeedEntry[] = await getCachedVideoList(env, channels)
+        const { videos: uploads, isStale } = await getCachedVideoList(env, channels, now)
         const uploadsWithLive = await annotateUploadsWithLiveStatus(uploads, env)
-        const liveOnYoutube = uploadsWithLive.filter(
-          (upload) => upload.liveStatus?.state === 'live',
-        )
-        return withCors(JSON.stringify({ liveOnYoutube }), {
+        const liveOnYoutube = uploadsWithLive.filter((upload) => upload.liveStatus?.state === 'live')
+
+        return withCors(JSON.stringify({ liveOnYoutube, stale: isStale }), {
           headers: {
             'Cache-Control': buildSWRCacheControl(YOUTUBE_TTL, YOUTUBE_TTL),
           },
         })
       }
+
 
       // /youtube/uploads
       if (url.pathname === '/youtube/uploads') {
@@ -86,11 +88,24 @@ export default {
           })
         }
 
-        const uploads: YoutubeFeedEntry[] = await getCachedVideoList(env, channels)
+        const forceFresh = request.headers.get('x-force-revalidate') === 'true'
+
+        let uploads: YoutubeFeedEntry[]
+        let isStale: boolean
+
+        if (forceFresh) {
+          uploads = await buildAndCacheVideoList(env, channels, now)
+          isStale = false
+        } else {
+          const cached = await getCachedVideoList(env, channels, now)
+          uploads = cached.videos
+          isStale = cached.isStale
+        }
 
         const uploadsWithLive = await annotateUploadsWithLiveStatus(uploads.slice(0, 20), env)
+        const nonLive = uploadsWithLive.filter(u => u.liveStatus?.state !== 'live')
 
-        return withCors(JSON.stringify({ uploads: uploadsWithLive }), {
+        return withCors(JSON.stringify({ uploads: nonLive, isStale }), {
           status: 200,
           headers: {
             'Cache-Control': buildSWRCacheControl(UPLOAD_TTL_SECONDS, UPLOAD_TTL_SECONDS),
@@ -102,6 +117,7 @@ export default {
       if (url.pathname === '/live') {
         const logins = parseTwitchLogins(url)
         const channels = parseYoutubeChannels(url)
+        const forceFresh = request.headers.get('x-force-revalidate') === 'true'
 
         if (!logins.length && !channels.length) {
           return withCors(
@@ -126,11 +142,23 @@ export default {
           }
         }
 
+        // Youtube branch
         if (channels.length) {
           try {
-            const uploads: YoutubeFeedEntry[] = await getCachedVideoList(env, channels)
-            const uploadsWithLive = await annotateUploadsWithLiveStatus(uploads, env)
-            youtube = uploadsWithLive.filter((upload) => upload.liveStatus?.state === 'live')
+            let videos: YoutubeFeedEntry[]
+            if (forceFresh) {
+              videos = await buildAndCacheVideoList(env, channels, now)
+            } else {
+              const { videos: cachedVideos } = await getCachedVideoList(env, channels, now)
+              videos = cachedVideos
+            }
+
+            const uploadsWithLive = await annotateUploadsWithLiveStatus(videos, env)
+            const youtubeLive = uploadsWithLive.filter(
+              (upload) => upload.liveStatus?.state === 'live'
+            )
+
+            youtube = youtubeLive
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e)
             errors.youtube = msg

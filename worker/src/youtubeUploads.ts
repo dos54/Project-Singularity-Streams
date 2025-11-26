@@ -1,37 +1,53 @@
-// src/youtubeUploads.ts
-
 import { XMLParser } from 'fast-xml-parser'
 import type { Env } from './env'
-import { XML_PARSER_CONFIG, UPLOAD_TTL_SECONDS, SORTED_UPLOADS_TTL } from './env'
-import { getVideoLiveStatuses, type VideoLiveStatus } from './youtubeVideoStatus'
+import { XML_PARSER_CONFIG, UPLOAD_TTL_SECONDS, SORTED_UPLOADS_TTL, YOUTUBE_STREAMS_LIST_KEY, YOUTUBE_VIDEO_LIST_KEY, LIVE_RECHECK_SECONDS, NON_LIVE_RECHECK_SECONDS } from './env'
 
-/**
- * Author info from the YouTube Atom feed.
- */
+/* -------------------------------------------------------------------------- */
+/*  Live status types                                                         */
+/* -------------------------------------------------------------------------- */
+
+export type VideoLiveState = 'live' | 'ended' | 'video' | 'inactive'
+
+export interface VideoLiveStatus {
+  state: VideoLiveState
+  lastChecked: number
+  actualStartTime?: string
+  actualEndTime?: string
+  concurrentViewers?: string | number
+}
+
+interface YoutubeVideosListItem {
+  id?: string
+  liveStreamingDetails?: {
+    actualStartTime?: string
+    actualEndTime?: string
+    concurrentViewers?: string
+  }
+}
+
+interface YoutubeVideosListResponse {
+  items?: YoutubeVideosListItem[]
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Atom feed + combined list types                                           */
+/* -------------------------------------------------------------------------- */
+
 export interface YoutubeFeedAuthor {
   name: string
   uri: string
 }
 
-/**
- * Link node from the YouTube Atom feed.
- */
 export interface YoutubeFeedLink {
   '@_href': string
 }
 
-/**
- * Thumbnail attributes from the YouTube media group.
- */
 export interface YoutubeFeedThumbnail {
   '@_url': string
   '@_width': string
   '@_height': string
 }
 
-/**
- * media:group section from the YouTube Atom feed.
- */
 export interface YoutubeFeedMediaGroup {
   'media:title'?: string
   'media:content'?: unknown
@@ -50,9 +66,6 @@ export interface YoutubeFeedMediaGroup {
   }
 }
 
-/**
- * Raw entry from the YouTube Atom feed after XML parsing.
- */
 export type RawYoutubeFeedEntry = {
   id: string
   'yt:videoId': string
@@ -65,17 +78,14 @@ export type RawYoutubeFeedEntry = {
   'media:group'?: YoutubeFeedMediaGroup
 }
 
-/**
- * Raw YouTube Atom feed shape after XML parsing.
- */
 export interface RawYoutubeFeed {
   feed?: {
-    entry?: RawYoutubeFeedEntry[]
+    entry?: RawYoutubeFeedEntry[] | RawYoutubeFeedEntry
   }
 }
 
 /**
- * Minimal, normalized representation of a YouTube video for your app.
+ * Minimal, normalized representation of a YouTube video
  */
 export type YoutubeFeedEntry = {
   videoId: string
@@ -86,43 +96,58 @@ export type YoutubeFeedEntry = {
   thumbnailUrl: string | null
   thumbnailWidth: string | null
   thumbnailHeight: string | null
+  // filled by annotateUploadsWithLiveStatus
   liveStatus?: VideoLiveStatus
 }
 
-/**
- * Latest uploads result for a single channel.
- */
 export type YoutubeUploadsResult = {
   channelId: string
   latest: YoutubeFeedEntry[]
 }
 
 /**
- * Cache payload shape for uploads stored in the edge cache.
+ * Cached combined list payload
  */
-// type YoutubeUploadsCacheEntry = {
-//   timestamp: number
-//   data: YoutubeUploadsResult[]
-// }
+export interface SortedVideoListCache {
+  updatedAt: number
+  ttlMs: number
+  videos: YoutubeFeedEntry[]
+}
 
-export async function annotateUploadsWithLiveStatus(
-  uploads: YoutubeFeedEntry[],
-  env: Env
-): Promise<YoutubeFeedEntry[]> {
-  const videoIds = uploads
-    .map((v) => v.videoId)
-    .filter((id) => id.trim().length > 0)
+/* -------------------------------------------------------------------------- */
+/*  Helpers                                                                   */
+/* -------------------------------------------------------------------------- */
 
-  if (videoIds.length === 0) return uploads
-  const statusMap = await getVideoLiveStatuses(videoIds, env)
-  return uploads.map((entry) => ({
-    ...entry,
-    liveStatus: statusMap[entry.videoId]
-  }))
+export function getCanonicalIds(videoIds: string[]): string[] {
+  return Array.from(new Set(videoIds.map((id) => id.trim()).filter((id) => id.length > 0)))
 }
 
 /**
- * Helper to pick a thumbnail from the media:group (handles single or array).
+ * Derive live/video/inactive from liveStreamingDetails
+ */
+function deriveLiveStateFromDetails(details?: {
+  actualStartTime?: string
+  actualEndTime?: string
+  concurrentViewers?: string | number
+  activeLiveChatId?: string
+}): VideoLiveState {
+  if (!details) return 'video'
+
+  const { actualStartTime, actualEndTime, concurrentViewers, activeLiveChatId } = details
+
+  if (actualEndTime) {
+    return 'video'
+  }
+
+  if (actualStartTime && (concurrentViewers || activeLiveChatId)) {
+    return 'live'
+  }
+
+  return 'inactive'
+}
+
+/**
+ * Small helper for thumbnails
  */
 function pickThumbnail(th: YoutubeFeedThumbnail | YoutubeFeedThumbnail[] | undefined): {
   url: string | null
@@ -142,51 +167,170 @@ function pickThumbnail(th: YoutubeFeedThumbnail | YoutubeFeedThumbnail[] | undef
 }
 
 /**
- * Sorts YouTube videos from newest to oldest based on `published` ISO string.
+ * Newest → oldest by published date
  */
 function sortVideosByDate(videos: YoutubeFeedEntry[]): YoutubeFeedEntry[] {
   const valid = videos.filter((v) => typeof v.published === 'string')
   return valid.sort((a, b) => b.published!.localeCompare(a.published!))
 }
 
-/**
- * Compute a stable hash for a list of channel IDs, used to build KV cache keys.
- */
-async function hashChannelList(channelIds: string[]): Promise<string> {
-  const sorted = [...channelIds].sort()
-  const data = new TextEncoder().encode(sorted.join(','))
+/* -------------------------------------------------------------------------- */
+/*  Streams cache: one KV object with all live statuses                       */
+/* -------------------------------------------------------------------------- */
 
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = [...new Uint8Array(hashBuffer)]
-
-  return btoa(String.fromCharCode(...hashArray))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '')
+interface StreamsStatusCache {
+  statuses: Record<string, VideoLiveStatus>;
 }
 
 /**
- * Build the KV key for the combined, sorted uploads list for a set of channels.
+ * Fetch live status for a set of videos.
+ *
+ * - All statuses are stored in a single KV object under YOUTUBE_STREAMS_LIST_KEY.
+ * - Each status has its own lastChecked, and we still use per-state staleness.
  */
-async function makeVideoListCacheKey(channelIds: string[]): Promise<string> {
-  const digest = await hashChannelList(channelIds)
-  return `sortedVideoList:${digest}`
+export async function getVideoLiveStatuses(
+  videoIds: string[],
+  env: Env,
+): Promise<Record<string, VideoLiveStatus>> {
+  const now = Date.now();
+  const unique = getCanonicalIds(videoIds);
+  if (unique.length === 0) return {};
+
+  // Load the single streams object from KV
+  const cache =
+    (await env.KV.get<StreamsStatusCache>(YOUTUBE_STREAMS_LIST_KEY, {
+      type: 'json',
+    })) ?? { statuses: {} };
+
+  const result: Record<string, VideoLiveStatus> = {};
+  const toRefresh: string[] = [];
+
+  for (const id of unique) {
+    const cached = cache.statuses[id];
+
+    if (!cached) {
+      toRefresh.push(id);
+      continue;
+    }
+
+    // Non-live → reuse indefinitely, no re-check
+    if (
+      cached.state === 'video' ||
+      cached.state === 'ended' ||
+      cached.state === 'inactive'
+    ) {
+      result[id] = cached;
+      continue;
+    }
+
+    const ageSeconds = (now - cached.lastChecked) / 1000;
+
+    if (ageSeconds > LIVE_RECHECK_SECONDS) {
+      toRefresh.push(id);
+    } else {
+      result[id] = cached;
+    }
+  }
+
+  if (toRefresh.length === 0) {
+    return result;
+  }
+
+  // Query YouTube for stale/missing IDs in batches of 50
+  const batches: string[][] = [];
+  for (let i = 0; i < toRefresh.length; i += 50) {
+    batches.push(toRefresh.slice(i, i + 50));
+  }
+
+  await Promise.all(
+    batches.map(async (batch) => {
+      const url = new URL('https://www.googleapis.com/youtube/v3/videos');
+      url.searchParams.set('part', 'liveStreamingDetails');
+      url.searchParams.set('id', batch.join(','));
+      url.searchParams.set('key', env.YOUTUBE_API_KEY);
+
+      const resp = await fetch(url.toString());
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.error('Youtube videos.list error:', resp.status, text);
+        console.log(url.toString());
+        throw new Error(`Youtube videos.list error: ${resp.status}`);
+      }
+
+      const json = (await resp.json()) as YoutubeVideosListResponse;
+      const items = json.items ?? [];
+
+      const itemMap = new Map<string, YoutubeVideosListItem>();
+      for (const item of items) {
+        if (item.id) itemMap.set(item.id, item);
+      }
+
+      await Promise.all(
+        batch.map(async (videoId) => {
+          const item = itemMap.get(videoId);
+          const details = item?.liveStreamingDetails;
+          const state = deriveLiveStateFromDetails(details);
+
+          const status: VideoLiveStatus = {
+            state,
+            lastChecked: now,
+            actualStartTime: details?.actualStartTime,
+            actualEndTime: details?.actualEndTime,
+            concurrentViewers: details?.concurrentViewers,
+          };
+
+          // Update in-memory result + cache
+          result[videoId] = status;
+          cache.statuses[videoId] = status;
+        }),
+      );
+    }),
+  );
+
+  // Persist the single streams object back to KV.
+  // TTL can be fairly generous; staleness is enforced via lastChecked.
+  const STREAMS_CACHE_TTL_SECONDS = NON_LIVE_RECHECK_SECONDS * 4;
+  await env.KV.put(
+    YOUTUBE_STREAMS_LIST_KEY,
+    JSON.stringify(cache),
+    { expirationTtl: STREAMS_CACHE_TTL_SECONDS },
+  );
+
+  return result;
 }
 
-/**
- * Fetch latest uploads for a single channel, with KV caching.
- * Returns minimal `YoutubeFeedEntry` objects.
- */
+/* -------------------------------------------------------------------------- */
+/*  Annotate uploads with live status                                         */
+/* -------------------------------------------------------------------------- */
+
+export async function annotateUploadsWithLiveStatus(
+  uploads: YoutubeFeedEntry[],
+  env: Env,
+): Promise<YoutubeFeedEntry[]> {
+  const videoIds = uploads.map((v) => v.videoId).filter((id) => id.trim().length > 0)
+
+  if (videoIds.length === 0) return uploads
+
+  const statusMap = await getVideoLiveStatuses(videoIds, env)
+
+  return uploads.map((entry) => ({
+    ...entry,
+    liveStatus: statusMap[entry.videoId],
+  }))
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Channel feed → per-channel cached uploads                                 */
+/* -------------------------------------------------------------------------- */
+
 export async function getLatestVideos(channelId: string, env: Env): Promise<YoutubeFeedEntry[]> {
   const cacheKey = `${channelId}-latest-videos`
 
-  // Try KV cache first
-  const cachedJson = await env.KV.get(cacheKey, { type: 'json' })
+  const cachedJson = await env.KV.get<YoutubeFeedEntry[]>(cacheKey, { type: 'json' })
   if (cachedJson) {
-    return cachedJson as YoutubeFeedEntry[]
+    return cachedJson
   }
 
-  // Cache miss: fetch feed
   const url = new URL('https://www.youtube.com/feeds/videos.xml')
   url.searchParams.set('channel_id', channelId)
 
@@ -200,9 +344,13 @@ export async function getLatestVideos(channelId: string, env: Env): Promise<Yout
   const data = parser.parse(xml) as RawYoutubeFeed
 
   const rawEntry = data.feed?.entry
-  const entries: RawYoutubeFeedEntry[] = Array.isArray(rawEntry) ? rawEntry : rawEntry ? [rawEntry] : []
+  const entries: RawYoutubeFeedEntry[] = Array.isArray(rawEntry)
+    ? rawEntry
+    : rawEntry
+      ? [rawEntry]
+      : []
 
-  const simplified: YoutubeFeedEntry[] = entries.map((entry: RawYoutubeFeedEntry) => {
+  const simplified: YoutubeFeedEntry[] = entries.map((entry) => {
     const videoId = entry['yt:videoId'] ?? ''
     const title = entry.title ?? null
     const published = entry.published ?? null
@@ -228,7 +376,6 @@ export async function getLatestVideos(channelId: string, env: Env): Promise<Yout
 
   const limited = simplified.slice(0, 10)
 
-  // Store minimal data in KV
   await env.KV.put(cacheKey, JSON.stringify(limited), {
     expirationTtl: UPLOAD_TTL_SECONDS,
   })
@@ -236,10 +383,6 @@ export async function getLatestVideos(channelId: string, env: Env): Promise<Yout
   return limited
 }
 
-/**
- * Fetch latest uploads for multiple channels in parallel.
- * One channel failing will not break the entire batch.
- */
 export async function getLatestVideosForChannels(
   channelIds: string[],
   env: Env,
@@ -258,80 +401,118 @@ export async function getLatestVideosForChannels(
   return results
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Combined sorted list cache (one big KV item per channel set)              */
+/* -------------------------------------------------------------------------- */
+
+async function hashChannelList(channelIds: string[]): Promise<string> {
+  const sorted = [...channelIds].sort()
+  const data = new TextEncoder().encode(sorted.join(','))
+
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashArray = [...new Uint8Array(hashBuffer)]
+
+  return btoa(String.fromCharCode(...hashArray))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+async function makeVideoListCacheKey(channelIds: string[]): Promise<string> {
+  const digest = await hashChannelList(channelIds)
+  return `sortedVideoList:${digest}`
+}
+
+/**
+ * Get the data attached to the key, and determine if that data is stale or not.
+ */
+export async function getCachedOrToRefresh(
+  key: string,
+  env: Env,
+  now: number,
+): Promise<{
+  data: SortedVideoListCache | null
+  isStale: boolean
+}> {
+  const data = await env.KV.get<SortedVideoListCache>(key, { type: 'json' })
+
+  if (!data) {
+    return { data: null, isStale: true }
+  }
+
+  const age = now - data.updatedAt
+
+  return {
+    data,
+    isStale: age > data.ttlMs,
+  }
+}
+
+export async function cacheVideoList(
+  key: string,
+  cache: SortedVideoListCache,
+  env: Env,
+  now: number,
+): Promise<void> {
+  cache.updatedAt = now
+
+  await env.KV.put(key, JSON.stringify(cache), {
+    expirationTtl: (cache.ttlMs / 1000) * 100,
+  })
+}
+
 /**
  * Get a cached, sorted list of the latest videos across a set of channels.
- * Uses KV as a secondary cache for the combined + sorted list.
+ * Does not recompute on stale; caller can decide what to do with isStale.
  */
 export async function getCachedVideoList(
   env: Env,
   channelIds: string[],
-): Promise<YoutubeFeedEntry[]> {
+  now: number,
+): Promise<{
+  videos: YoutubeFeedEntry[]
+  isStale: boolean
+}> {
   const cacheKey = await makeVideoListCacheKey(channelIds)
-  const cached = await env.KV.get<YoutubeFeedEntry[]>(cacheKey, { type: 'json' as const })
+  const { data: cached, isStale } = await getCachedOrToRefresh(cacheKey, env, now)
 
   if (cached) {
     console.log(`Cache hit on ${cacheKey}`)
-    return cached
+    return {
+      videos: cached.videos,
+      isStale,
+    }
   }
 
   console.log(`Cache miss on ${cacheKey}`)
-
-  const lists = await Promise.all(channelIds.map((id) => getLatestVideos(id, env)))
-  const combined = lists.flat()
-  const sorted = sortVideosByDate(combined)
-
-  await env.KV.put(cacheKey, JSON.stringify(sorted), { expirationTtl: SORTED_UPLOADS_TTL })
-
-  return sorted
+  return {
+    videos: [],
+    isStale: true,
+  }
 }
 
 /**
- * Alternative uploads cacher using the edge Cache API instead of KV.
- * Currently unused, but kept for future flexibility.
+ * Build a fresh sorted list and write it to KV.
  */
-// export async function fetchYoutubeUploadsWithCache(
-//   channelIds: string[],
-//   ctx: ExecutionContext,
-//   requestUrl: URL,
-//   env: Env,
-// ): Promise<YoutubeUploadsResult[]> {
-//   if (!channelIds.length) return []
+export async function buildAndCacheVideoList(
+  env: Env,
+  channelIds: string[],
+  now: number,
+): Promise<YoutubeFeedEntry[]> {
+  const cacheKey = await makeVideoListCacheKey(channelIds)
 
-//   const sorted = [...channelIds].sort()
-//   const cacheUrl = new URL(requestUrl.toString())
-//   cacheUrl.pathname = '/__youtube_cache_uploads'
-//   cacheUrl.search = `?channels=${encodeURIComponent(sorted.join(','))}`
+  const lists = await Promise.all(channelIds.map((id) => getLatestVideos(id, env)))
+  const combined = lists.flat()
+  const nonLive = combined.filter(u => u.liveStatus?.state !== 'live')
+  const sorted = sortVideosByDate(nonLive)
 
-//   const cacheKey = new Request(cacheUrl.toString(), { method: 'GET' })
-//   const cache = caches.default
+  const cache: SortedVideoListCache = {
+    updatedAt: now,
+    ttlMs: SORTED_UPLOADS_TTL * 1000,
+    videos: sorted,
+  }
 
-//   const now = Date.now()
-//   const cached = await cache.match(cacheKey)
-//   if (cached) {
-//     try {
-//       const cachedEntry = (await cached.json()) as YoutubeUploadsCacheEntry
-//       if (now - cachedEntry.timestamp < UPLOAD_TTL_SECONDS * 1000) {
-//         return cachedEntry.data
-//       }
-//     } catch {
-//       // corrupted cache; ignore and refetch
-//     }
-//   }
+  await cacheVideoList(cacheKey, cache, env, now)
 
-//   const results = await getLatestVideosForChannels(sorted, env)
-
-//   const entry: YoutubeUploadsCacheEntry = {
-//     timestamp: now,
-//     data: results,
-//   }
-
-//   const cacheResp = new Response(JSON.stringify(entry), {
-//     headers: {
-//       'Content-Type': 'application/json',
-//     },
-//   })
-
-//   ctx.waitUntil(cache.put(cacheKey, cacheResp.clone()))
-
-//   return results
-// }
+  return sorted
+}

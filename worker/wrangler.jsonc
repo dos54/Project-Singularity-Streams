@@ -15,5 +15,7 @@
 
   "vars": {
     "TWITCH_CLIENT_ID": "bjrunh046oko3ckz2rl4bijz88xiow",
+    "TWITCH_CLIENT_SECRET": "bjrunh046oko3ckz2rl4bijz88xiow",
+    "YOUTUBE_API_KEY": "bjrunh046oko3ckz2rl4bijz88xiow"
   }
 }
