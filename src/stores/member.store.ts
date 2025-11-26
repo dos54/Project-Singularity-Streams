@@ -89,12 +89,12 @@ export interface MemberLatestVideo {
 const STATUS_TTL_MS = 60_000
 const UPLOAD_TTL_MS = 60_000
 const CACHE_KEY = 'memberStatusCache_v1'
-const UPLOAD_CACHE_KEY = 'memberUploadsCache_v2' // bumped because shape changed
+const UPLOAD_CACHE_KEY = 'memberUploadsCache_v3'
 const WORKER_BASE_URL = 'https://twitch-proxy.dragonofshame.workers.dev'
 
 interface UploadCachePayload {
   timestamp: number
-  uploads: Record<string, YoutubeVideoInfo>
+  uploads: YoutubeVideoWithChannel[]
 }
 
 interface StatusCachePayload {
@@ -114,11 +114,11 @@ export const useMemberStore = defineStore('members', () => {
   const statusError = ref<Error | null>(null)
 
   // uploads
+  const allUploads = ref<YoutubeVideoWithChannel[]>([])
   const latestVideoByChannelId = ref<Record<string, YoutubeVideoInfo>>({})
   const lastUploadsFetch = ref<number | null>(null)
   const isFetchingUploads = ref(false)
   const uploadsError = ref<Error | null>(null)
-
   // hydrate from localStorage
   if (typeof window !== 'undefined') {
     const raw = window.localStorage.getItem(CACHE_KEY)
@@ -140,11 +140,12 @@ export const useMemberStore = defineStore('members', () => {
         const parsed = JSON.parse(rawUploads) as UploadCachePayload
         const now = Date.now()
         if (now - parsed.timestamp < UPLOAD_TTL_MS) {
-          latestVideoByChannelId.value = parsed.uploads
+          allUploads.value = parsed.uploads
           lastUploadsFetch.value = parsed.timestamp
         }
       } catch {}
     }
+
   }
 
   const membersWithStreams = computed<MemberWithStream[]>(() =>
@@ -197,20 +198,13 @@ export const useMemberStore = defineStore('members', () => {
     })
   })
 
-  const uploadsList = computed<YoutubeVideoWithChannel[]>(() => {
-    const result: YoutubeVideoWithChannel[] = []
-
-    for (const [channelId, video] of Object.entries(latestVideoByChannelId.value)) {
-      if (!video.publishedAt) continue
-      result.push({ ...video, channelId })
-    }
-
-    return result.sort((a, b) => {
+  const uploadsList = computed<YoutubeVideoWithChannel[]>(() =>
+    [...allUploads.value].sort((a, b) => {
       const aTime = Date.parse(a.publishedAt ?? '') || 0
       const bTime = Date.parse(b.publishedAt ?? '') || 0
       return bTime - aTime
-    })
-  })
+    }),
+  )
 
   async function refreshStatus(force = false): Promise<void> {
     const now = Date.now()
@@ -331,14 +325,17 @@ export const useMemberStore = defineStore('members', () => {
 
       const res = await fetch(`${WORKER_BASE_URL}/youtube/uploads?${params.toString()}`, {
         headers,
-        method: 'GET'
+        method: 'GET',
+        cache: 'no-store',
       })
       if (!res.ok) {
         throw new Error(`Failed to fetch uploads: ${res.status}`)
       }
 
       const data = (await res.json()) as UploadApiResponse
-      const map: Record<string, YoutubeVideoInfo> = {}
+
+      const uploads: YoutubeVideoWithChannel[] = []
+      const latestByChannel: Record<string, YoutubeVideoInfo> = {}
 
       for (const entry of data.uploads) {
         if (!entry.videoId) continue
@@ -348,21 +345,40 @@ export const useMemberStore = defineStore('members', () => {
         const channelId = match?.[1]
         if (!channelId) continue
 
-        map[channelId] = {
+        const publishedAt = entry.published ?? null
+
+        const video: YoutubeVideoWithChannel = {
+          channelId,
           videoId: entry.videoId,
           title: entry.title ?? null,
-          publishedAt: entry.published ?? null,
+          publishedAt,
           thumbnailUrl: entry.thumbnailUrl ?? null,
+        }
+
+        uploads.push(video)
+
+        // track *latest* per channel for membersByLatestUpload
+        const current = latestByChannel[channelId]
+        const currentTime = current?.publishedAt ? Date.parse(current.publishedAt) : 0
+        const newTime = publishedAt ? Date.parse(publishedAt) : 0
+        if (!current || newTime > currentTime) {
+          latestByChannel[channelId] = {
+            videoId: video.videoId,
+            title: video.title,
+            publishedAt: video.publishedAt,
+            thumbnailUrl: video.thumbnailUrl,
+          }
         }
       }
 
-      latestVideoByChannelId.value = map
+      allUploads.value = uploads
+      latestVideoByChannelId.value = latestByChannel
       lastUploadsFetch.value = now
 
       if (typeof window !== 'undefined') {
         const payload: UploadCachePayload = {
           timestamp: now,
-          uploads: map,
+          uploads: uploads,
         }
         window.localStorage.setItem(UPLOAD_CACHE_KEY, JSON.stringify(payload))
       }
@@ -376,8 +392,7 @@ export const useMemberStore = defineStore('members', () => {
         }, 3000)
       }
     } catch (e) {
-      uploadsError.value =
-        e instanceof Error ? e : new Error('Unknown error while fetching uploads')
+      uploadsError.value = e instanceof Error ? e : new Error('Unknown error while fetching uploads')
     } finally {
       isFetchingUploads.value = false
     }
