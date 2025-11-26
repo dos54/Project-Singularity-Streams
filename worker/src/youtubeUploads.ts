@@ -511,7 +511,7 @@ export async function buildAndCacheVideoList(
 
   const lists = await Promise.all(channelIds.map((id) => getLatestVideos(id, env)))
   const combined = lists.flat()
-  const nonLive = combined.filter(u => u.liveStatus?.state !== 'live')
+  const nonLive = combined.filter(u => u.liveStatus?.state === 'video')
   const sorted = sortVideosByDate(nonLive)
 
   const cache: SortedVideoListCache = {
