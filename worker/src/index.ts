@@ -89,6 +89,7 @@ export default {
         }
 
         const forceFresh = request.headers.get('X-Force-Revalidate') === 'true'
+        console.log('Force Refresh:', forceFresh)
 
         let uploads: YoutubeFeedEntry[]
         let isStale: boolean

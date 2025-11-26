@@ -59,7 +59,6 @@ export interface LiveApiResponse {
   youtube: LiveYoutubeEntry[] | null
 }
 
-
 // /youtube/uploads response
 interface UploadApiEntry {
   videoId: string
@@ -73,7 +72,7 @@ interface UploadApiEntry {
 }
 
 interface UploadApiResponse {
-  uploads: UploadApiEntry[],
+  uploads: UploadApiEntry[]
   isStale: boolean
 }
 
@@ -280,7 +279,9 @@ export const useMemberStore = defineStore('members', () => {
               videoId: entry.videoId ?? null,
               title: entry.title ?? null,
               thumbnailUrl: entry.thumbnailUrl ?? null,
-              viewerCount: entry.liveStatus?.concurrentViewers ? Number(entry.liveStatus.concurrentViewers) : null
+              viewerCount: entry.liveStatus?.concurrentViewers
+                ? Number(entry.liveStatus.concurrentViewers)
+                : null,
             },
           }
         }
@@ -325,10 +326,12 @@ export const useMemberStore = defineStore('members', () => {
 
       const headers: HeadersInit = {}
       if (force) {
-        headers['x-force-revalidate'] = 'true'
+        headers['X-Force-Revalidate'] = 'true'
       }
 
-      const res = await fetch(`${WORKER_BASE_URL}/youtube/uploads?${params.toString()}`, { headers })
+      const res = await fetch(`${WORKER_BASE_URL}/youtube/uploads?${params.toString()}`, {
+        headers,
+      })
       if (!res.ok) {
         throw new Error(`Failed to fetch uploads: ${res.status}`)
       }
@@ -366,7 +369,9 @@ export const useMemberStore = defineStore('members', () => {
       if (data.isStale && !force && typeof window !== 'undefined') {
         console.log('Stale data received, refreshing data')
         window.setTimeout(() => {
-          fetchLatestUploads(true).catch((err) => { console.error('Failed to revalidate uploads', err)})
+          fetchLatestUploads(true).catch((err) => {
+            console.error('Failed to revalidate uploads', err)
+          })
         }, 3000)
       }
     } catch (e) {

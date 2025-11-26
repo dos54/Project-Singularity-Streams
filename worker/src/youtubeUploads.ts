@@ -507,6 +507,7 @@ export async function buildAndCacheVideoList(
   channelIds: string[],
   now: number,
 ): Promise<YoutubeFeedEntry[]> {
+  console.log('running buildAndCacheVideoList')
   const cacheKey = await makeVideoListCacheKey(channelIds)
 
   const lists = await Promise.all(channelIds.map((id) => getLatestVideos(id, env)))
