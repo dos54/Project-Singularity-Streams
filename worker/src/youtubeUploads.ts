@@ -442,6 +442,14 @@ export async function getCachedOrToRefresh(
 
   const age = now - data.updatedAt
 
+  console.log('[cache] hit', {
+    key,
+    updatedAt: data.updatedAt,
+    ttlMs: data.ttlMs,
+    age,
+    isStale: age > data.ttlMs,
+  })
+
   return {
     data,
     isStale: age > data.ttlMs,

@@ -364,6 +364,7 @@ export const useMemberStore = defineStore('members', () => {
       }
 
       if (data.isStale && !force && typeof window !== 'undefined') {
+        console.log('Stale data received, refreshing data')
         window.setTimeout(() => {
           fetchLatestUploads(true).catch((err) => { console.error('Failed to revalidate uploads', err)})
         }, 3000)
