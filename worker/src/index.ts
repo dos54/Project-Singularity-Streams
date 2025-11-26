@@ -88,7 +88,7 @@ export default {
           })
         }
 
-        const forceFresh = request.headers.get('x-force-revalidate') === 'true'
+        const forceFresh = request.headers.get('X-Force-Revalidate') === 'true'
 
         let uploads: YoutubeFeedEntry[]
         let isStale: boolean
@@ -117,7 +117,7 @@ export default {
       if (url.pathname === '/live') {
         const logins = parseTwitchLogins(url)
         const channels = parseYoutubeChannels(url)
-        const forceFresh = request.headers.get('x-force-revalidate') === 'true'
+        const forceFresh = request.headers.get('X-Force-Revalidate') === 'true'
 
         if (!logins.length && !channels.length) {
           return withCors(
