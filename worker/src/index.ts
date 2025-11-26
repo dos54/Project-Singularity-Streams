@@ -104,7 +104,7 @@ export default {
         }
 
         const uploadsWithLive = await annotateUploadsWithLiveStatus(uploads.slice(0, 20), env)
-        const nonLive = uploadsWithLive.filter(u => u.liveStatus?.state !== 'live')
+        const nonLive = uploadsWithLive.filter(u => u.liveStatus?.state === 'video')
 
         return withCors(JSON.stringify({ uploads: nonLive, isStale }), {
           status: 200,

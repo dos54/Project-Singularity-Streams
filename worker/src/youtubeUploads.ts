@@ -442,14 +442,6 @@ export async function getCachedOrToRefresh(
 
   const age = now - data.updatedAt
 
-  console.log('[cache] hit', {
-    key,
-    updatedAt: data.updatedAt,
-    ttlMs: data.ttlMs,
-    age,
-    isStale: age > data.ttlMs,
-  })
-
   return {
     data,
     isStale: age > data.ttlMs,
@@ -507,12 +499,11 @@ export async function buildAndCacheVideoList(
   channelIds: string[],
   now: number,
 ): Promise<YoutubeFeedEntry[]> {
-  console.log('running buildAndCacheVideoList')
   const cacheKey = await makeVideoListCacheKey(channelIds)
 
   const lists = await Promise.all(channelIds.map((id) => getLatestVideos(id, env)))
   const combined = lists.flat()
-  const nonLive = combined.filter(u => u.liveStatus?.state === 'video')
+  const nonLive = combined.filter(u => u.liveStatus?.state !== 'live')
   const sorted = sortVideosByDate(nonLive)
 
   const cache: SortedVideoListCache = {
