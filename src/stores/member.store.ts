@@ -73,7 +73,8 @@ interface UploadApiEntry {
 }
 
 interface UploadApiResponse {
-  uploads: UploadApiEntry[]
+  uploads: UploadApiEntry[],
+  isStale: boolean
 }
 
 export type MemberWithStream = Member & {
@@ -307,15 +308,13 @@ export const useMemberStore = defineStore('members', () => {
 
   async function fetchLatestUploads(force = false): Promise<void> {
     const now = Date.now()
-    if (!force && lastUploadsFetch.value !== null && now - lastUploadsFetch.value < UPLOAD_TTL_MS) {
-      return
-    }
 
     const youtubeIds = members.value
       .map((m) => m.youtubeId)
       .filter((id): id is string => !!id && id.trim().length > 0)
 
     if (youtubeIds.length === 0) return
+    if (isFetchingUploads.value) return
 
     isFetchingUploads.value = true
     uploadsError.value = null
@@ -324,7 +323,12 @@ export const useMemberStore = defineStore('members', () => {
       const params = new URLSearchParams()
       params.set('youtube', youtubeIds.join(','))
 
-      const res = await fetch(`${WORKER_BASE_URL}/youtube/uploads?${params.toString()}`)
+      const headers: HeadersInit = {}
+      if (force) {
+        headers['x-force-revalidate'] = 'true'
+      }
+
+      const res = await fetch(`${WORKER_BASE_URL}/youtube/uploads?${params.toString()}`, { headers })
       if (!res.ok) {
         throw new Error(`Failed to fetch uploads: ${res.status}`)
       }
@@ -357,6 +361,12 @@ export const useMemberStore = defineStore('members', () => {
           uploads: map,
         }
         window.localStorage.setItem(UPLOAD_CACHE_KEY, JSON.stringify(payload))
+      }
+
+      if (data.isStale && !force && typeof window !== 'undefined') {
+        window.setTimeout(() => {
+          fetchLatestUploads(true).catch((err) => { console.error('Failed to revalidate uploads', err)})
+        }, 3000)
       }
     } catch (e) {
       uploadsError.value =
