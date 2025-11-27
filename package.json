@@ -17,7 +17,7 @@
     "lint:eslint": "eslint . --fix --cache",
     "lint": "run-s lint:*",
     "format": "prettier --write src/",
-    "build-and-publish": "run-p type-check \"build-only {@}\" -- && git add dist && git commit -m 'Updating subtree' && git subtree push --prefix dist origin gh-pages"
+    "build-and-publish": "run-p type-check \"build-only {@}\" -- && git add dist && git commit -m \"Updating subtree\" && git subtree split --prefix dist -b gh-pages-temp && git push origin gh-pages-temp:gh-pages --force && git branch -D gh-pages-temp"
   },
   "dependencies": {
     "@fontsource/roboto": "^5.2.8",
