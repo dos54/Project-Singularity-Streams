@@ -2,7 +2,7 @@
   <v-container fluid>
     <v-row>
       <v-img
-        :src="baseUrl + '/project-singularity.png'"
+        src="/project-singularity.png"
         max-width="1000"
         cover
         class="ma-auto fade-edges"
@@ -88,7 +88,6 @@ import NewVideoList from '@/components/NewVideoList.vue'
 
 const memberStore = useMemberStore()
 const { sortedMembers, isFetchingStatus, statusError, streamingMembers, uploadsList } = storeToRefs(memberStore)
-const baseUrl = import.meta.env.BASE_URL
 const membersDrawer = ref(false)
 
 onMounted(async () => {
