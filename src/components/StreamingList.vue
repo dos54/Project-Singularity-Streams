@@ -5,17 +5,24 @@
       {{ user.alias }}
     </v-card-title>
 
-    <v-card-subtitle v-if="subtitle">
-      {{ subtitle }}
+    <v-card-subtitle v-if="subtitle" class="wrap-title">
+      <a v-if="user.youtubeStatus?.live.isLive" :href="`https://www.youtube.com/watch?v=${user.youtubeStatus.live.videoId}`" rel="noopener" target="_blank" class="thumbnail-wrapper">
+        {{ subtitle }}
+      </a>
     </v-card-subtitle>
 
     <v-card-text v-if="user.stream?.isLive || user.youtubeStatus?.live.isLive">
-      <div v-if="user.stream?.isLive && !user.youtubeStatus?.live.isLive">
-        LIVE to {{ user.stream.viewerCount ?? 0 }} viewers on Twitch
+      <a v-if="user.youtubeStatus?.live.isLive" :href="`https://www.youtube.com/watch?v=${user.youtubeStatus.live.videoId}`" rel="noopener" target="_blank" class="thumbnail-wrapper">
+        <img :src="user.youtubeStatus?.live.thumbnailUrl || ''" :alt="user.youtubeStatus?.live.title || ''">
+      </a>
+      <div>
+        <div v-if="user.stream?.isLive">
+          LIVE on Twitch to {{ user.stream.viewerCount ?? 0 }} viewers
+        </div>
+        <div v-if="user.youtubeStatus?.live.isLive">
+          LIVE on YouTube to {{ user.youtubeStatus.live.viewerCount }} viewers
+        </div>
       </div>
-      <div v-else-if="user.youtubeStatus?.live.isLive && !user.stream?.isLive">LIVE on YouTube to {{ user.youtubeStatus.live.viewerCount }} viewers</div>
-      <div v-else-if="user.youtubeStatus?.live.isLive && user.stream?.isLive">LIVE on YouTube and Twitch to {{ (user.youtubeStatus.live.viewerCount ?? 0) + (user.stream.viewerCount ?? 0) }}</div>
-
     </v-card-text>
 
     <v-card-actions>
@@ -32,7 +39,7 @@
       </v-btn>
       <v-btn
         v-if="user.youtube"
-        :href="`https://www.youtube.com/${user.youtube}`"
+        :href="`https://www.youtube.com/watch?v=${user.youtubeStatus?.live.videoId || user.youtube}`"
         color="red"
         variant="elevated"
         prepend-icon="fa-brands fa-youtube"
@@ -85,4 +92,27 @@ const subtitle = computed<string | null>(() => {
   border: 2px solid rgb(189, 0, 0);
   display: inline-block;
 }
+
+.wrap-title {
+  white-space: normal !important;
+  line-height: 1.3;
+}
+
+.thumbnail-wrapper {
+  display: inline-block;
+  border-radius: 8px;
+  overflow: hidden;
+  width: auto;
+}
+
+.thumbnail-wrapper img {
+  display: block;
+  width: 100%;
+}
+
+a {
+  text-decoration: none;
+  color: black;
+}
+
 </style>

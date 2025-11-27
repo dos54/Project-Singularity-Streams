@@ -54,7 +54,7 @@
 
         <section>
           <h2>Currently Streaming</h2>
-          <div v-if="streamingMembers.length === 0">Sorry, no one is streaming at the moment</div>
+          <div v-if="streamingMembers.length === 0 && !isFetchingStatus">Sorry, no one is streaming at the moment</div>
           <ul v-else class="list">
             <li v-for="member in streamingMembers" :key="member.alias">
               <StreamingList :user="member" />
