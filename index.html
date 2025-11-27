@@ -5,6 +5,20 @@
     <link rel="icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Project Singularity</title>
+      <script>
+    (function () {
+      // Only redirect when using the GitHub Pages URL
+      if (location.hostname === 'dos54.github.io') {
+        var target = 'https://singularitystream.org';
+
+        // Optionally try to preserve path after /Project-Singularity-Streams
+        var path = location.pathname.replace(/^\/Project-Singularity-Streams/, '');
+        var redirectUrl = target + path + location.search + location.hash;
+
+        window.location.replace(redirectUrl);
+      }
+    })();
+  </script>
   </head>
   <body>
     <div id="app"></div>
