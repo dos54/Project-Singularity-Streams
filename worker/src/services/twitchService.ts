@@ -43,7 +43,7 @@ async function getAppToken(env: Env): Promise<string> {
     method: 'POST',
     body: new URLSearchParams({
       client_id: env.TWITCH_CLIENT_ID,
-      client_secret: /*env.TWITCH_CLIENT_SECRET*/ 'cv1qsa5c4tsykhqprogx6z096ovixh',
+      client_secret: env.TWITCH_CLIENT_SECRET,
       grant_type: 'client_credentials',
     }),
   })

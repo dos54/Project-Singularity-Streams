@@ -137,7 +137,7 @@ export async function fetchLiveStatusesFromYoutube(env: Env, idsToRefresh: strin
       const url = new URL(`${env.YT_API_BASE}/youtube/v3/videos`)
       url.searchParams.set('part', 'liveStreamingDetails')
       url.searchParams.set('id', batch.join(','))
-      url.searchParams.set('key', /*env.YOUTUBE_API_KEY*/ 'AIzaSyCcO11NpcclEE8WqPu7FGwI3bovJzaQ5rk')
+      url.searchParams.set('key', env.YOUTUBE_API_KEY)
 
       const resp = await fetch(url.toString())
       if (!resp.ok) {
