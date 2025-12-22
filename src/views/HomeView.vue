@@ -4,8 +4,7 @@
       <v-img
         src="/project-singularity.png"
         max-width="1000"
-        cover
-        class="ma-auto fade-edges"
+        class="ma-auto fade-edges hero-img"
       />
     </v-row>
 
@@ -14,21 +13,21 @@
       v-model="membersDrawer"
       location="left"
       temporary
-      class="d-md-none"
-      width="384"
+      class="d-md-none drawer-75"
+      width="300"
     >
       <v-toolbar flat>
         <v-toolbar-title>Members</v-toolbar-title>
         <v-spacer />
         <v-btn icon @click="membersDrawer = false">
-          <v-icon>mdi-close</v-icon>
+          <v-icon icon="fa-regular fa-circle-xmark" />
         </v-btn>
       </v-toolbar>
 
       <v-divider />
 
       <v-list>
-        <v-list-item v-for="member in sortedMembers" :key="member.alias">
+        <v-list-item v-for="member in sortedMembers" :key="member.memberId">
           <MemberList :user="member" />
         </v-list-item>
       </v-list>
@@ -38,7 +37,7 @@
       <v-col cols="4" class="d-none d-md-block">
         <h2>Members</h2>
         <ul class="list">
-          <li v-for="member in sortedMembers" :key="member.alias">
+          <li v-for="member in sortedMembers" :key="member.memberId">
             <MemberList :user="member" />
           </li>
         </ul>
@@ -54,21 +53,30 @@
 
         <section>
           <h2>Currently Streaming</h2>
-          <div v-if="streamingMembers.length === 0 && !isFetchingStatus">Sorry, no one is streaming at the moment</div>
+          <v-switch v-model="onlyProjectSingularityStreams" label="[EXPERIMENTAL] Only Show Project Singularity Streams" ></v-switch>
+
+          <div v-if="loading">Loading streaming status...</div>
+          <div v-else-if="error">Failed to load stream data.</div>
+          <div v-else-if="filteredStreamingMembers.length === 0">No streams found.</div>
+
           <ul v-else class="list">
-            <li v-for="member in streamingMembers" :key="member.alias">
+            <li v-for="member in filteredStreamingMembers" :key="member.memberId">
               <StreamingList :user="member" />
             </li>
           </ul>
-          <div v-if="isFetchingStatus">Loading Twitch status...</div>
-          <div v-else-if="statusError">Failed to load stream data.</div>
         </section>
+
         <br />
+
         <section>
           <h2>Latest Videos</h2>
-          <div v-if="uploadsList.length === 0">There appears to be no uploads...</div>
+          <v-switch v-model="onlyProjectSingularity" label="[EXPERIMENTAL] Only Show Project Singularity Videos" ></v-switch>
+
+          <div v-if="loading && filteredUploads.length === 0">Loading videos...</div>
+          <div v-else-if="filteredUploads.length === 0">Either there was a problem, or there are no uploads.</div>
+
           <ul v-else class="list">
-            <li v-for="video in uploadsList" :key="video.videoId">
+            <li v-for="video in filteredUploads.slice(0, 10)" :key="video.videoId">
               <NewVideoList :video="video" />
             </li>
           </ul>
@@ -79,20 +87,42 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed,  } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMemberStore } from '@/stores/member.store'
+
 import StreamingList from '@/components/StreamingList.vue'
 import MemberList from '@/components/MemberList.vue'
 import NewVideoList from '@/components/NewVideoList.vue'
 
-const memberStore = useMemberStore()
-const { sortedMembers, isFetchingStatus, statusError, streamingMembers, uploadsList } = storeToRefs(memberStore)
 const membersDrawer = ref(false)
 
+const memberStore = useMemberStore()
+const { sortedMembers, streamingMembers, loading, error, uploads } = storeToRefs(memberStore)
+
+const onlyProjectSingularity = ref(true)
+const onlyProjectSingularityStreams = ref(true)
+
+const filteredStreamingMembers = computed(() => {
+  if (!onlyProjectSingularityStreams.value) {
+    return streamingMembers.value
+  }
+
+  return streamingMembers.value.filter(member => {
+    const yt = member.latestYoutubeVideo
+    if (!yt) return false
+    return yt.state === 'live' && yt.isProjectSingularity
+  })
+})
+
+const filteredUploads = computed(() => {
+  const base = uploads.value
+  if (!onlyProjectSingularity.value) return base
+  return base.filter(v => v.isProjectSingularity)
+})
+
 onMounted(async () => {
-  memberStore.refreshStatus()
-  memberStore.fetchLatestUploads()
+  await memberStore.hydrate()
 })
 </script>
 
@@ -105,9 +135,28 @@ onMounted(async () => {
 }
 
 .fade-edges {
-  mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
-
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 20%,
+    black 80%,
+    transparent 100%
+  );
   mask-repeat: no-repeat;
   mask-size: 100% 100%;
+}
+
+.hero-img {
+  height: 550px;
+}
+
+.drawer-75 {
+  max-width: 75% !important;
+}
+
+@media (max-width: 600px) {
+  .hero-img {
+    height: 220px;
+  }
 }
 </style>

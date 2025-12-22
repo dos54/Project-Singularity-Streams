@@ -8,9 +8,11 @@
     class="video-card"
   >
     <v-card-title class="wrap-title">{{ video.title }}</v-card-title>
+
     <v-card-subtitle>
       {{ memberAlias }}
     </v-card-subtitle>
+
     <v-card-text>
       {{ formattedDate }}
     </v-card-text>
@@ -19,25 +21,26 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { YoutubeVideoWithChannel } from '@/stores/member.store'
-import { useMemberStore } from '@/stores/member.store';
-import { storeToRefs } from 'pinia';
+import { storeToRefs } from 'pinia'
+import { useMemberStore } from '@/stores/member.store'
+import type { YoutubeVideo } from '@/types/youtube'
 
 const props = defineProps<{
-  video: YoutubeVideoWithChannel
+  video: YoutubeVideo
 }>()
 
 const memberStore = useMemberStore()
-const { aliasByChannelId } = storeToRefs(memberStore)
+const { membersById } = storeToRefs(memberStore)
+
 const memberAlias = computed(() => {
-  return aliasByChannelId.value[props.video.channelId] ?? props.video.channelId
+  return membersById.value[props.video.memberId]?.alias ?? `Member #${props.video.memberId}`
 })
 
 const formattedDate = computed(() => {
   const p = props.video.publishedAt
   if (!p) return ''
   try {
-    return new Date(p).toLocaleString() // user’s locale + timezone
+    return new Date(p).toLocaleString()
   } catch {
     return p
   }
@@ -49,7 +52,4 @@ const formattedDate = computed(() => {
   white-space: normal !important;
   line-height: 1.3;
 }
-
-/* .video-card {
-} */
 </style>

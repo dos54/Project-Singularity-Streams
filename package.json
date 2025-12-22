@@ -7,7 +7,7 @@
     "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
-    "dev": "vite --host",
+    "dev": "VITE_BUILD_DATE=$(date -u +\"%Y-%m-%d %H:%M UTC\") vite --host",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "test:unit": "vitest",
@@ -17,7 +17,7 @@
     "lint:eslint": "eslint . --fix --cache",
     "lint": "run-s lint:*",
     "format": "prettier --write src/",
-    "build-and-publish": "run-p type-check \"build-only {@}\" -- && git add dist && git commit -m \"Updating subtree\" && git subtree split --prefix dist -b gh-pages-temp && git push origin gh-pages-temp:gh-pages --force && git branch -D gh-pages-temp"
+    "build-and-publish": "VITE_BUILD_DATE=$(date -u +\"%Y-%m-%d %H:%M UTC\") run-p type-check \"build-only {@}\" -- && git add dist && git commit -m \"Updating subtree\" && git subtree split --prefix dist -b gh-pages-temp && git push origin gh-pages-temp:gh-pages --force && git branch -D gh-pages-temp"
   },
   "dependencies": {
     "@fontsource/roboto": "^5.2.8",
@@ -44,16 +44,19 @@
     "eslint": "^9.37.0",
     "eslint-plugin-oxlint": "~1.23.0",
     "eslint-plugin-vue": "~10.5.0",
+    "express": "^5.2.1",
     "jiti": "^2.6.1",
     "jsdom": "^27.0.1",
     "npm-run-all2": "^8.0.4",
     "oxlint": "~1.23.0",
     "prettier": "3.6.2",
+    "ts-node": "^10.9.2",
     "typescript": "~5.9.0",
     "unplugin-fonts": "^1.4.0",
     "vite": "^7.1.11",
     "vite-plugin-vue-devtools": "^8.0.3",
     "vitest": "^3.2.4",
-    "vue-tsc": "^3.1.1"
+    "vue-tsc": "^3.1.1",
+    "wrangler": "^4.54.0"
   }
 }

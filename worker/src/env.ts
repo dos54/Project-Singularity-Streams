@@ -6,7 +6,14 @@ export interface Env {
   TWITCH_CLIENT_SECRET: string
   YOUTUBE_API_KEY: string
   KV: KVNamespace
+  ENVIRONMENT: Environment
+  YT_API_BASE: string
+  TWITCH_API_BASE: string,
+  DB: D1Database,
+  ATOM_FEED_BASE: string,
 }
+
+export type Environment = 'dev' | 'production'
 
 /**
  * TTL (seconds) for YouTube live status (Data API) cache stored in the edge cache.
@@ -40,3 +47,4 @@ export const XML_PARSER_CONFIG = {
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
 } as const
+

@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Member } from '@/data/members'
+import type { Member } from '@/types/member'
 
 defineProps<{
   user: Member

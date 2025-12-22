@@ -1,6 +1,5 @@
 <template>
   <v-container fluid class="main-container">
-    <header>This is NOT an official Project Singularity website.</header>
     <RouterView />
     <footer>
       <div>
@@ -8,6 +7,8 @@
         <a href="https://esahubble.org/images/heic1608a"> NASA, ESA, Hubble Heritage Team </a>
       </div>
       <div>This is NOT an official Project Singularity website.</div>
+
+      <div class="build-date">Last updated: {{ buildDate }}</div>
     </footer>
   </v-container>
 </template>
@@ -20,6 +21,8 @@
 // const route = useRoute()
 
 // const title = ref(route.meta.title || '')
+
+const buildDate = import.meta.env.VITE_BUILD_DATE ?? ''
 </script>
 
 <style scoped>

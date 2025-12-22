@@ -1,26 +1,46 @@
 <template>
   <v-card variant="elevated" color="primary">
     <v-card-title>
-      <span v-if="user.stream?.isLive || user.youtubeStatus?.live.isLive" class="status-dot"></span>
+      <span v-if="isLive" class="status-dot"></span>
       {{ user.alias }}
     </v-card-title>
 
     <v-card-subtitle v-if="subtitle" class="wrap-title">
-      <a v-if="user.youtubeStatus?.live.isLive" :href="`https://www.youtube.com/watch?v=${user.youtubeStatus.live.videoId}`" rel="noopener" target="_blank" class="thumbnail-wrapper">
+      <a
+        v-if="user.latestYoutubeVideo?.state === 'live'"
+        :href="youtubeWatchUrl"
+        rel="noopener"
+        target="_blank"
+        class="thumbnail-wrapper"
+      >
         {{ subtitle }}
       </a>
+      <span v-else>
+        {{ subtitle }}
+      </span>
     </v-card-subtitle>
 
-    <v-card-text v-if="user.stream?.isLive || user.youtubeStatus?.live.isLive">
-      <a v-if="user.youtubeStatus?.live.isLive" :href="`https://www.youtube.com/watch?v=${user.youtubeStatus.live.videoId}`" rel="noopener" target="_blank" class="thumbnail-wrapper">
-        <img :src="user.youtubeStatus?.live.thumbnailUrl || ''" :alt="user.youtubeStatus?.live.title || ''">
+    <v-card-text v-if="isLive">
+      <a
+        v-if="user.latestYoutubeVideo?.state === 'live'"
+        :href="youtubeWatchUrl"
+        rel="noopener"
+        target="_blank"
+        class="thumbnail-wrapper"
+      >
+        <img
+          :src="user.latestYoutubeVideo?.thumbnailUrl || ''"
+          :alt="user.latestYoutubeVideo?.title || ''"
+        />
       </a>
+
       <div>
-        <div v-if="user.stream?.isLive">
-          LIVE on Twitch to {{ user.stream.viewerCount ?? 0 }} viewers
+        <div v-if="user.twitchStream?.isLive">
+          LIVE on Twitch to {{ user.twitchStream.viewerCount ?? 0 }} viewers
         </div>
-        <div v-if="user.youtubeStatus?.live.isLive">
-          LIVE on YouTube to {{ user.youtubeStatus.live.viewerCount }} viewers
+
+        <div v-if="user.latestYoutubeVideo?.state === 'live'">
+          LIVE on YouTube
         </div>
       </div>
     </v-card-text>
@@ -37,9 +57,10 @@
       >
         Twitch
       </v-btn>
+
       <v-btn
-        v-if="user.youtube"
-        :href="`https://www.youtube.com/watch?v=${user.youtubeStatus?.live.videoId || user.youtube}`"
+        v-if="user.youtube || user.youtubeId"
+        :href="youtubeChannelUrl"
         color="red"
         variant="elevated"
         prepend-icon="fa-brands fa-youtube"
@@ -54,32 +75,37 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { StreamInfo, YoutubeStatus } from '@/stores/member.store'
-
-interface User {
-  alias: string
-  twitch?: string
-  youtube?: string
-  discord?: string
-}
-
-type UserWithStream = User & {
-  stream?: StreamInfo | null
-  youtubeStatus?: YoutubeStatus | null
-}
+import type { MemberWithComputed } from '@/types/member'
 
 const props = defineProps<{
-  user: UserWithStream
+  user: MemberWithComputed
 }>()
 
+const isLive = computed(() => {
+  return Boolean(props.user.twitchStream?.isLive || props.user.latestYoutubeVideo?.state === 'live')
+})
+
 const subtitle = computed<string | null>(() => {
-  if (props.user.stream?.isLive && props.user.stream.title) {
-    return props.user.stream.title
+  if (props.user.twitchStream?.isLive && props.user.twitchStream.title) {
+    return props.user.twitchStream.title
   }
-  if (props.user.youtubeStatus?.live.isLive && props.user.youtubeStatus.live.title) {
-    return props.user.youtubeStatus.live.title
+  if (props.user.latestYoutubeVideo?.state === 'live' && props.user.latestYoutubeVideo.title) {
+    return props.user.latestYoutubeVideo.title
   }
   return null
+})
+
+const youtubeWatchUrl = computed(() => {
+  const id = props.user.latestYoutubeVideo?.videoId
+  return id ? `https://www.youtube.com/watch?v=${id}` : 'https://www.youtube.com'
+})
+
+const youtubeChannelUrl = computed(() => {
+  // Prefer explicit channel id if present
+  if (props.user.youtubeId) return `https://www.youtube.com/channel/${props.user.youtubeId}`
+  // If backend provides @handle in `youtube`, use it directly
+  if (props.user.youtube) return `https://www.youtube.com/${props.user.youtube}`
+  return 'https://www.youtube.com'
 })
 </script>
 
@@ -114,5 +140,4 @@ a {
   text-decoration: none;
   color: black;
 }
-
 </style>

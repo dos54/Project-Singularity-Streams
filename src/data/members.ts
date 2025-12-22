@@ -37,7 +37,7 @@ export const members: Member[] = [
     youtubeId: 'UCNnaNSEzrD5pwDj5sKfklyQ',
   },
   {
-    alias: 'soycake',
+    alias: 'Soycake',
     youtube: '@soycake',
     youtubeId: 'UCwm_VlOAG3svWsgb_9yUU1Q',
   },

@@ -6,6 +6,12 @@
     "enabled": true
   },
 
+  "triggers": {
+    "crons": [
+      "*/2 * * * *"
+    ]
+  },
+
   "kv_namespaces": [
     {
       "binding": "KV",
@@ -13,7 +19,48 @@
     }
   ],
 
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "singularitystream-db",
+      "database_id": "1eccf628-86ab-403d-8027-d9c0b254d7d7",
+      "migrations_dir": "migrations"
+    }
+  ],
+
   "vars": {
-    "TWITCH_CLIENT_ID": "bjrunh046oko3ckz2rl4bijz88xiow"
+    "TWITCH_CLIENT_ID": "bjrunh046oko3ckz2rl4bijz88xiow",
+    "ENVIRONMENT": "production",
+    "YT_API_BASE": "https://www.googleapis.com",
+    "TWITCH_API_BASE": "https://api.twitch.tv",
+    "ATOM_FEED_BASE": "https://www.youtube.com"
+  },
+
+  "env": {
+    "dev": {
+      "kv_namespaces": [
+        {
+          "binding": "KV",
+          "id": "ca8c1e0ae03e415a9057b36893376560"
+        },
+      ],
+
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "singularitystream-db",
+          "database_id": "1eccf628-86ab-403d-8027-d9c0b254d7d7",
+          "migrations_dir": "migrations"
+        }
+      ],
+
+      "vars": {
+        "ENVIRONMENT": "dev",
+        "TWITCH_CLIENT_ID": "bjrunh046oko3ckz2rl4bijz88xiow",
+        "TWITCH_API_BASE": "http://10.0.0.100:4100",
+        "YT_API_BASE": "http://10.0.0.100:4100",
+        "ATOM_FEED_BASE": "https://www.youtube.com"
+      }
+    }
   }
 }

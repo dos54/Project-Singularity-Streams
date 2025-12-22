@@ -1,6 +1,5 @@
-// src/twitch.ts
-
-import type { Env } from './env'
+import { getAllTwitchMembers } from '../db/members'
+import type { Env } from '../env'
 
 /**
  * Normalized Twitch stream information returned by this worker.
@@ -44,7 +43,7 @@ async function getAppToken(env: Env): Promise<string> {
     method: 'POST',
     body: new URLSearchParams({
       client_id: env.TWITCH_CLIENT_ID,
-      client_secret: env.TWITCH_CLIENT_SECRET,
+      client_secret: /*env.TWITCH_CLIENT_SECRET*/ 'cv1qsa5c4tsykhqprogx6z096ovixh',
       grant_type: 'client_credentials',
     }),
   })
@@ -76,13 +75,13 @@ export function parseTwitchLogins(url: URL): string[] {
 /**
  * Fetches live stream data for the given Twitch logins and normalizes it.
  */
-export async function fetchTwitchData(logins: string[], env: Env): Promise<TwitchResult[]> {
-  if (!logins.length) return []
-
+export async function fetchTwitchLivestreams(env: Env): Promise<TwitchResult[]> {
+  const twitchUsers = await getAllTwitchMembers(env)
+  const logins = twitchUsers.map(u => u.Twitch).filter((t): t is string => t !== null)
   const token = await getAppToken(env)
   const qs = logins.map((l) => `user_login=${encodeURIComponent(l)}`).join('&')
 
-  const twitchResp = await fetch(`https://api.twitch.tv/helix/streams?${qs}`, {
+  const twitchResp = await fetch(`${env.TWITCH_API_BASE}/helix/streams?${qs}`, {
     headers: {
       'Client-Id': env.TWITCH_CLIENT_ID,
       Authorization: `Bearer ${token}`,
