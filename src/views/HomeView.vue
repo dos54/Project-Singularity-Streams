@@ -1,11 +1,7 @@
 <template>
   <v-container fluid>
     <v-row>
-      <v-img
-        src="/project-singularity.png"
-        max-width="1000"
-        class="ma-auto fade-edges hero-img"
-      />
+      <v-img src="/project-singularity.png" max-width="1000" class="ma-auto fade-edges hero-img" />
     </v-row>
 
     <!-- Mobile drawer for members -->
@@ -53,7 +49,10 @@
 
         <section>
           <h2>Currently Streaming</h2>
-          <v-switch v-model="onlyProjectSingularityStreams" label="[EXPERIMENTAL] Only Show Project Singularity Streams" ></v-switch>
+          <v-switch
+            v-model="onlyProjectSingularityStreams"
+            label="[EXPERIMENTAL] Only Show Project Singularity Streams"
+          ></v-switch>
 
           <div v-if="loading">Loading streaming status...</div>
           <div v-else-if="error">Failed to load stream data.</div>
@@ -70,10 +69,15 @@
 
         <section>
           <h2>Latest Videos</h2>
-          <v-switch v-model="onlyProjectSingularity" label="[EXPERIMENTAL] Only Show Project Singularity Videos" ></v-switch>
+          <v-switch
+            v-model="onlyProjectSingularity"
+            label="[EXPERIMENTAL] Only Show Project Singularity Videos"
+          ></v-switch>
 
           <div v-if="loading && filteredUploads.length === 0">Loading videos...</div>
-          <div v-else-if="filteredUploads.length === 0">Either there was a problem, or there are no uploads.</div>
+          <div v-else-if="filteredUploads.length === 0">
+            Either there was a problem, or there are no uploads.
+          </div>
 
           <ul v-else class="list">
             <li v-for="video in filteredUploads.slice(0, 10)" :key="video.videoId">
@@ -87,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed,  } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMemberStore } from '@/stores/member.store'
 
@@ -108,17 +112,21 @@ const filteredStreamingMembers = computed(() => {
     return streamingMembers.value
   }
 
-  return streamingMembers.value.filter(member => {
+  const twitchStreams = streamingMembers.value.filter((member) => member.twitchStream?.isLive)
+
+  const ytStreamers = streamingMembers.value.filter((member) => {
     const yt = member.latestYoutubeVideo
     if (!yt) return false
     return yt.state === 'live' && yt.isProjectSingularity
   })
+
+  return { ...ytStreamers, ...twitchStreams }
 })
 
 const filteredUploads = computed(() => {
   const base = uploads.value
   if (!onlyProjectSingularity.value) return base
-  return base.filter(v => v.isProjectSingularity)
+  return base.filter((v) => v.isProjectSingularity)
 })
 
 onMounted(async () => {
@@ -135,13 +143,7 @@ onMounted(async () => {
 }
 
 .fade-edges {
-  mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    black 20%,
-    black 80%,
-    transparent 100%
-  );
+  mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
   mask-repeat: no-repeat;
   mask-size: 100% 100%;
 }
