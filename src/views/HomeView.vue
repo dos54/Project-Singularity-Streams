@@ -98,6 +98,7 @@ import { useMemberStore } from '@/stores/member.store'
 import StreamingList from '@/components/StreamingList.vue'
 import MemberList from '@/components/MemberList.vue'
 import NewVideoList from '@/components/NewVideoList.vue'
+import { isPsTwitchStream } from '@/utils'
 
 const membersDrawer = ref(false)
 
@@ -112,15 +113,18 @@ const filteredStreamingMembers = computed(() => {
     return streamingMembers.value
   }
 
-  const twitchStreams = streamingMembers.value.filter((member) => member.twitchStream?.isLive)
+  const filteredStreamers = streamingMembers.value.filter((member) => {
+    const title = member.twitchStream?.title ?? ''
+    const isTwitchLive =
+      !!member.twitchStream?.isLive && isPsTwitchStream(title)
 
-  const ytStreamers = streamingMembers.value.filter((member) => {
     const yt = member.latestYoutubeVideo
-    if (!yt) return false
-    return yt.state === 'live' && yt.isProjectSingularity
+    const isYtPsLive = !!yt && yt.state === 'live' && yt.isProjectSingularity
+
+    return isTwitchLive || isYtPsLive
   })
 
-  return { ...ytStreamers, ...twitchStreams }
+  return filteredStreamers
 })
 
 const filteredUploads = computed(() => {

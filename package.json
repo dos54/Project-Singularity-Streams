@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "VITE_BUILD_DATE=$(date -u +\"%Y-%m-%d %H:%M UTC\") vite --host",
-    "build": "run-p type-check \"build-only {@}\" --",
+    "build": "run-p type-check \"build-only {@}\" -- && cp dist/index.html dist/404.html",
+    "postbuild-only": "cp dist/index.html dist/404.html",
     "preview": "vite preview",
     "test:unit": "vitest",
     "build-only": "vite build",
@@ -17,7 +18,7 @@
     "lint:eslint": "eslint . --fix --cache",
     "lint": "run-s lint:*",
     "format": "prettier --write src/",
-    "build-and-publish": "VITE_BUILD_DATE=$(date -u +\"%Y-%m-%d %H:%M UTC\") run-p type-check \"build-only {@}\" -- && git add dist && git commit -m \"Updating subtree\" && git subtree split --prefix dist -b gh-pages-temp && git push origin gh-pages-temp:gh-pages --force && git branch -D gh-pages-temp"
+    "build-and-publish": "VITE_BUILD_DATE=$(date -u +\"%Y-%m-%d %H:%M UTC\") run-p type-check \"build-only {@}\" -- && cp dist/index.html dist/404.html && git add dist && git commit -m \"Updating subtree\" && git subtree split --prefix dist -b gh-pages-temp && git push origin gh-pages-temp:gh-pages --force && git branch -D gh-pages-temp"
   },
   "dependencies": {
     "@fontsource/roboto": "^5.2.8",
