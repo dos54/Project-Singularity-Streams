@@ -24,6 +24,7 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMemberStore } from '@/stores/member.store'
 import type { YoutubeVideo } from '@/types/youtube'
+import { timeAgo } from '@/utils';
 
 const props = defineProps<{
   video: YoutubeVideo
@@ -39,10 +40,13 @@ const memberAlias = computed(() => {
 const formattedDate = computed(() => {
   const p = props.video.publishedAt
   if (!p) return ''
+
+  const d = new Date(p)
+  if (Number.isNaN(d.getTime())) return String(p)
   try {
-    return new Date(p).toLocaleString()
+    return timeAgo(d)
   } catch {
-    return p
+    return d
   }
 })
 </script>
