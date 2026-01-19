@@ -44,7 +44,7 @@ const formattedDate = computed(() => {
   const d = new Date(p)
   if (Number.isNaN(d.getTime())) return String(p)
   try {
-    return timeAgo(d)
+    return timeAgo(d).split(' ').map(word => word[0]?.toUpperCase() + word.slice(1)).join(' ')
   } catch {
     return d
   }
