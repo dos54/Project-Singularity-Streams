@@ -54,6 +54,7 @@
     "eslint-plugin-oxlint": "~1.23.0",
     "eslint-plugin-vue": "~10.5.0",
     "express": "^5.2.1",
+    "fake-indexeddb": "^6.2.5",
     "jiti": "^2.6.1",
     "jsdom": "^27.0.1",
     "miniflare": "4.20251217.0",

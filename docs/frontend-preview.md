@@ -1,3 +1,22 @@
+# Frontend utilities and refresh (2026-09-19)
+
+Implemented locally; see `frontend-utility-plan.md` for current scope and backend deferrals. Not committed, pushed, or deployed in this step.
+
+- Favorites remain in the member list/drawer, with independent Everyone/Favorites choices for videos and streams. Changes filter cached videos locally without extra requests. Counts read `Showing X of Y loaded videos`.
+- Share filtered list replaces Share view. Links include search, explicit creator IDs, project filters, and page size, and open on page 1. A favorite selection is translated into creator IDs.
+- Removed New since last visit, Hide seen, New badges, seen/unseen controls and undo, visit tracking, and Continue where you left off. Old preferences for these features are ignored. Reading positions and description expansion are no longer persisted. Normal pagination/filter history remains, and refreshes avoid moving a visible card when possible.
+- Refresh buttons retain the spinner, 15-second minimum cooldown, and `Please wait · Ns` countdown. Server Retry-After can extend it.
+- Automatic refresh occurs every five minutes only while visible and focused, and on returning after more than two minutes inactive. Requests are coalesced and missed intervals are not replayed.
+- Cold loads request 100 uploads; cached reloads and refreshes request 10. Explicit Load all follows archive pages of 500 while preserving downloaded history in IndexedDB. A head gap requires explicit archive loading.
+- Per-source receipt times describe browser retrieval. Failures preserve previous results with an explanation; unknown stream availability is not reported as a definitive zero.
+- Favorites and cache snapshots are separated by API URL. Cache and favorite resets remain independent. Existing IndexedDB v1/v2 snapshots remain compatible; retired seen state is unused.
+
+The staging 50-video increments are real stored matches: public API inspection found 603 unique uploads (12 creators with 50, one with 3). Backend fallback discovery fetches the first 50 uploads per channel. Favorites do not load or create another 50. Load all currently means all backend-stored uploads, not every historical video on YouTube.
+
+Validation: 26 frontend tests, frontend TypeScript, production build, and local browser checks passed. The existing large-bundle warning remains. Backend checks were not rerun for this frontend-only revision.
+
+The earlier notes below describe prior implementation milestones.
+
 # Frontend preview and upload pages
 
 Latest Videos uses `/youtube/uploads?limit=100&cursor=...` with 100 records per batch.

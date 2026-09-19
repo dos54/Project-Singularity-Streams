@@ -1,10 +1,11 @@
 <template>
   <v-container class="home-container">
-    <v-row>
-      <img src="/project-singularity.png" alt="Project Singularity" class="ma-auto fade-edges hero-img" />
-    </v-row>
-
-    <!-- Mobile drawer for members -->
+    <v-row class="hero-row"
+      ><img
+        src="/project-singularity.png"
+        alt="Project Singularity"
+        class="ma-auto fade-edges hero-img"
+    /></v-row>
     <v-navigation-drawer
       v-model="membersDrawer"
       location="left"
@@ -12,277 +13,787 @@
       class="d-md-none drawer-75"
       width="300"
     >
-      <v-toolbar flat>
-        <v-toolbar-title>Members</v-toolbar-title>
-        <v-spacer />
-        <v-btn icon @click="membersDrawer = false">
-          <v-icon icon="fa-regular fa-circle-xmark" />
-        </v-btn>
-      </v-toolbar>
-
-      <v-divider />
-
-      <v-list>
-        <v-list-item v-for="member in sortedMembers" :key="member.memberId">
-          <MemberList :user="member" />
-        </v-list-item>
-      </v-list>
+      <v-toolbar flat
+        ><v-toolbar-title>Members</v-toolbar-title><v-spacer /><v-btn
+          icon
+          aria-label="Close members"
+          @click="membersDrawer = false"
+          ><v-icon icon="fa-regular fa-circle-xmark" /></v-btn
+      ></v-toolbar>
+      <p class="drawer-hint">Star creators to build your favorites feed.</p>
+      <v-list
+        ><v-list-item v-for="member in sortedMembers" :key="member.memberId"
+          ><MemberList :user="member" /></v-list-item
+      ></v-list>
     </v-navigation-drawer>
-
     <v-row>
       <v-col cols="3" class="d-none d-md-block">
-        <h2>Members</h2>
+        <h2 id="members-heading" tabindex="-1">Members</h2>
+        <p class="section-hint">Star your favorite creators.</p>
         <ul class="list">
           <li v-for="member in sortedMembers" :key="member.memberId">
             <MemberList :user="member" />
           </li>
         </ul>
       </v-col>
-
       <v-col cols="12" md="9">
-        <!-- Mobile: button to open drawer -->
         <div class="d-flex justify-start mb-4 d-md-none">
-          <v-btn variant="outlined" color="primary" @click="membersDrawer = true">
-            Show Members
-          </v-btn>
+          <v-btn variant="outlined" @click="membersDrawer = true">Show Members</v-btn>
         </div>
-
-        <section>
-          <h2>Currently Streaming</h2>
+        <p
+          v-if="preferences.storageWarning || storageWarning || uploads.storageWarning.value"
+          role="status"
+        >
+          Browser storage is unavailable or full. Some preferences and videos may only last until
+          you leave.
+        </p>
+        <section aria-labelledby="stream-heading">
+          <div class="section-heading">
+            <h2 id="stream-heading">Currently Streaming</h2>
+            <RefreshButton
+              label="streams"
+              :busy="refresh.lanes.streams.pending || loading"
+              :seconds="streamCooldown"
+              :disabled="!refresh.enabled.value || demo"
+              @refresh="refresh.refresh('streams')"
+            />
+          </div>
+          <div class="section-options">
+            <div class="segmented" aria-label="Stream creators">
+              <button
+                type="button"
+                :aria-pressed="!personal.streamFavorites"
+                @click="setMode('streamFavorites', false)"
+              >
+                Everyone</button
+              ><button
+                type="button"
+                :aria-pressed="personal.streamFavorites"
+                @click="setMode('streamFavorites', true)"
+              >
+                Favorites
+              </button>
+            </div>
+            <v-switch
+              :model-value="filters.streamProject"
+              label="Project Singularity only"
+              color="primary"
+              inset
+              hide-details
+              class="project-filter"
+              @update:model-value="browse.update({ streamProject: !!$event })"
+            />
+          </div>
+          <p v-if="filters.streamCreators !== null" class="section-hint">
+            Shared selection: {{ filters.streamCreators.length }} creators.
+            <button
+              type="button"
+              class="text-button"
+              @click="browse.update({ streamCreators: null, page: filters.page })"
+            >
+              Clear selection
+            </button>
+          </p>
           <v-switch
-            v-model="onlyProjectSingularityStreams"
-            label="Project Singularity only" color="primary" inset hide-details class="project-filter"
-          ></v-switch>
-
-          <v-switch v-if="isDevelopment" v-model="demo" label="Preview demo livestreams (local only)" />
-          <p v-if="demo">Development preview — these streams are fictional.</p>
-          <p v-if="error && !demo" role="status">Some stream data could not load. Available streams are shown below.</p>
-          <p v-if="!loading || demo" class="result-count stream-count" aria-live="polite">Showing {{ filteredStreamingMembers.length }} of {{ demo ? demoStreams.length : streamingMembers.length }} active creators{{ error && !demo ? ' · Partial data' : '' }}</p>
-          <div v-if="loading && !demo">Loading streaming status...</div>
-          <div v-else-if="filteredStreamingMembers.length === 0">No streams found.</div>
-
+            v-if="isDevelopment"
+            v-model="demo"
+            label="Preview demo livestreams (local only)"
+          />
+          <p v-if="demo" role="status">Development preview — these streams are fictional.</p>
+          <p v-if="streamIssues && !demo" class="status-message" role="status">
+            {{ streamIssues }}
+            {{
+              streamsKnown
+                ? 'Showing available or previously received results.'
+                : 'Stream availability is unknown.'
+            }}
+          </p>
+          <button
+            v-if="streamIssues && !demo"
+            type="button"
+            class="text-button"
+            :disabled="
+              loading ||
+              refresh.lanes.streams.pending ||
+              streamCooldown > 0 ||
+              !refresh.enabled.value
+            "
+            @click="retryFailedStreams"
+          >
+            {{
+              streamCooldown > 0 ? `Please wait · ${streamCooldown}s` : 'Retry unavailable sources'
+            }}
+          </button>
+          <div v-if="!demo" class="freshness">
+            <span>YouTube: {{ sourceStatus('youtube') }}</span
+            ><span>Twitch: {{ sourceStatus('twitch') }}</span>
+          </div>
+          <p v-if="streamsKnown || demo" class="result-count stream-count" aria-live="polite">
+            Showing {{ filteredStreams.length }} of {{ allStreams.length }} active creators{{
+              streamIssues && !demo ? ' · Partial or stale data' : ''
+            }}
+          </p>
+          <div v-if="loading && !streamsKnown && !demo">Loading streaming status…</div>
+          <div v-else-if="!filteredStreams.length" class="empty-state">
+            <p>{{ streamEmpty }}</p>
+            <button
+              v-if="personal.streamFavorites && !preferences.favoriteIds.length"
+              type="button"
+              class="text-button"
+              @click="chooseFavorites"
+            >
+              Choose favorite creators
+            </button>
+            <button
+              v-else-if="streamsKnown && allStreams.length"
+              type="button"
+              class="text-button"
+              @click="resetStreamFilters"
+            >
+              Show all active creators
+            </button>
+          </div>
           <ul v-else class="list media-grid">
-            <li v-for="member in filteredStreamingMembers" :key="member.memberId">
+            <li v-for="member in filteredStreams" :key="member.memberId">
               <StreamingList :user="member" />
             </li>
           </ul>
         </section>
 
-        <br />
-
-        <section>
-          <h2>Latest Videos</h2>
-          <v-switch
-            v-model="onlyProjectSingularity"
-            label="Project Singularity only" color="primary" inset hide-details class="project-filter"
-          ></v-switch>
-
+        <section class="videos-section" aria-labelledby="videos-heading">
+          <div class="section-heading">
+            <h2 id="videos-heading">Latest Videos</h2>
+            <RefreshButton
+              label="videos"
+              :busy="
+                refresh.lanes.videos.pending || uploads.busy.value || uploads.initializing.value
+              "
+              :seconds="videoCooldown"
+              :disabled="!refresh.enabled.value"
+              @refresh="refresh.refresh('videos')"
+            />
+          </div>
+          <div class="section-options">
+            <div class="segmented" aria-label="Video creators">
+              <button
+                type="button"
+                :aria-pressed="!personal.videoFavorites"
+                @click="setMode('videoFavorites', false)"
+              >
+                Everyone</button
+              ><button
+                type="button"
+                :aria-pressed="personal.videoFavorites"
+                @click="setMode('videoFavorites', true)"
+              >
+                Favorites
+              </button>
+            </div>
+            <v-switch
+              :model-value="filters.project"
+              label="Project Singularity only"
+              color="primary"
+              inset
+              hide-details
+              class="project-filter"
+              @update:model-value="browse.update({ project: !!$event })"
+            />
+          </div>
           <div class="video-filters">
-            <label>Search videos<input v-model="search" type="search" placeholder="Title or description" /></label>
-            <label>Creator<select v-model="creator"><option value="">All creators</option><option v-for="member in sortedMembers" :key="member.memberId" :value="String(member.memberId)">{{ member.alias }}</option></select></label>
-            <label>Per page<select v-model.number="pageSize"><option v-for="size in [10, 20, 50, 100]" :key="size" :value="size">{{ size }}</option></select></label>
+            <label
+              >Search videos<input
+                :value="filters.q"
+                type="search"
+                maxlength="200"
+                placeholder="Title or description"
+                @input="browse.search(($event.target as HTMLInputElement).value)"
+            /></label>
+            <label
+              >Creator<select
+                :value="creatorValue"
+                @change="selectCreator(($event.target as HTMLSelectElement).value)"
+              >
+                <option value="">All creators</option>
+                <option
+                  v-if="filters.creators && filters.creators.length !== 1"
+                  :value="creatorValue"
+                >
+                  {{
+                    filters.creators.length
+                      ? `${filters.creators.length} selected creators`
+                      : 'No creators selected'
+                  }}
+                </option>
+                <option
+                  v-for="member in sortedMembers"
+                  :key="member.memberId"
+                  :value="String(member.memberId)"
+                >
+                  {{ member.alias }}
+                </option>
+              </select></label
+            >
+            <label
+              >Per page<select
+                :value="filters.pageSize"
+                @change="
+                  browse.update({ pageSize: Number(($event.target as HTMLSelectElement).value) })
+                "
+              >
+                <option v-for="size in [10, 20, 50, 100]" :key="size" :value="size">
+                  {{ size }}
+                </option>
+              </select></label
+            >
           </div>
-          <p class="result-count" aria-live="polite">{{ filteredVideos.length }} matching · {{ loadedVideos.length }} videos loaded{{ nextCursor ? ' · More history available' : '' }}</p>
+          <button type="button" class="text-button share-button" @click="prepareShare">
+            Share filtered list
+          </button>
+          <div v-if="shareOpen" class="share-panel">
+            <label
+              >Link to this filtered list<input
+                :value="shareUrl"
+                readonly
+                @focus="($event.target as HTMLInputElement).select()"
+            /></label>
+            <p>Includes your search, filters, selected creators, and page size. Opens on page 1.</p>
+            <button type="button" class="text-button" @click="copyShare">Copy link</button
+            ><button v-if="canShare" type="button" class="text-button" @click="nativeShare">
+              Share…</button
+            ><button type="button" class="text-button" @click="shareOpen = false">Close</button
+            ><span role="status">{{ shareMessage }}</span>
+          </div>
+          <p class="result-count" aria-live="polite">
+            Showing {{ filteredVideos.length }} of {{ uploads.videos.value.length }} loaded videos{{
+              uploads.nextCursor.value ? ' · More history available' : ''
+            }}
+          </p>
+          <p class="freshness">
+            {{ receivedAgo(uploads.headReceivedAt.value, refresh.now.value)
+            }}{{
+              uploads.error.value && uploads.videos.value.length
+                ? ' · Showing saved videos; refresh failed'
+                : ''
+            }}
+          </p>
           <div class="history-controls">
-            <v-btn v-if="nextCursor && !loadingAll" :disabled="pageLoading" variant="outlined" @click="loadVideos(true)">Load all videos</v-btn>
-            <template v-if="loadingAll || waitingForLimit">
-              <span role="status">{{ waitingForLimit ? `Server limit reached. Continuing in ${retrySeconds}s…` : 'Loading all videos…' }} {{ loadedVideos.length }} loaded</span>
-              <v-btn variant="text" @click="cancelLoading">Stop</v-btn>
-            </template>
+            <v-btn
+              v-if="uploads.nextCursor.value && !uploads.loadingAll.value"
+              :disabled="uploads.busy.value || videoCooldown > 0"
+              variant="outlined"
+              @click="loadHistory"
+              >Load all videos</v-btn
+            >
+            <template v-if="uploads.loadingAll.value"
+              ><span role="status"
+                >{{
+                  videoCooldown > 0
+                    ? `Server limit reached. Continuing in ${videoCooldown}s…`
+                    : 'Loading all videos…'
+                }}
+                {{ uploads.videos.value.length }} loaded</span
+              ><v-btn variant="text" @click="uploads.cancel">Stop</v-btn></template
+            >
           </div>
-          <p v-if="cacheWarning" role="status">Browser storage is unavailable or full. Videos remain available until you leave this page.</p>
+          <p v-if="uploads.error.value" role="status">
+            {{ uploads.error.value }}
+            {{
+              videoCooldown > 0
+                ? `Please wait ${videoCooldown}s before retrying.`
+                : 'Use Refresh to retry the latest videos, or Load all videos to continue history.'
+            }}
+          </p>
           <nav class="pagination pagination-top" aria-label="Video pages above list">
-            <v-btn :disabled="pageLoading || pageIndex === 0" @click="pageIndex--">Previous</v-btn>
-            <span>Page {{ pageIndex + 1 }} of {{ pageCount }}</span>
-            <v-btn :disabled="pageLoading || pageIndex + 1 >= pageCount" @click="pageIndex++">Next</v-btn>
+            <v-btn :disabled="currentPage <= 1" @click="browse.update({ page: currentPage - 1 })"
+              >Previous</v-btn
+            ><span>Page {{ currentPage }} of {{ pageCount }}</span
+            ><v-btn
+              :disabled="currentPage >= pageCount"
+              @click="browse.update({ page: currentPage + 1 })"
+              >Next</v-btn
+            >
           </nav>
-          <div v-if="pageLoading && !loadedVideos.length">Loading videos...</div>
-          <div v-else-if="pageVideos.length === 0">
-            {{ pageError || 'No uploads found.' }}
+          <div
+            v-if="
+              (uploads.busy.value || uploads.initializing.value) && !uploads.videos.value.length
+            "
+          >
+            Loading videos…
           </div>
-
+          <div v-else-if="!pageVideos.length" class="empty-state">
+            <p>{{ videoEmpty }}</p>
+            <button
+              v-if="personal.videoFavorites && !preferences.favoriteIds.length"
+              type="button"
+              class="text-button"
+              @click="chooseFavorites"
+            >
+              Choose favorite creators</button
+            ><button
+              v-else-if="uploads.videos.value.length"
+              type="button"
+              class="text-button"
+              @click="resetVideoFilters"
+            >
+              Clear video filters
+            </button>
+          </div>
           <div v-else class="video-columns">
             <ul v-for="(column, index) in videoColumns" :key="index" class="list video-column">
-              <li v-for="video in column" :key="video.videoId"><NewVideoList :video="video" /></li>
+              <li v-for="video in column" :key="video.videoId" :data-video-id="video.videoId">
+                <NewVideoList :video="video" />
+              </li>
             </ul>
           </div>
-          <p v-if="pageError && pageVideos.length" role="alert">{{ pageError }}</p>
-          <nav class="pagination" aria-label="Video pages">
-            <v-btn :disabled="pageLoading || pageIndex === 0" @click="pageIndex--">Previous</v-btn>
-            <span aria-live="polite">Page {{ pageIndex + 1 }} of {{ pageCount }}</span>
-            <v-btn :disabled="pageLoading || pageIndex + 1 >= pageCount" @click="pageIndex++">Next</v-btn>
-            <v-btn v-if="pageError" :disabled="pageLoading" @click="loadVideos(retryAll)">Retry</v-btn>
+          <nav class="pagination" aria-label="Video pages below list">
+            <v-btn :disabled="currentPage <= 1" @click="browse.update({ page: currentPage - 1 })"
+              >Previous</v-btn
+            ><span>Page {{ currentPage }} of {{ pageCount }}</span
+            ><v-btn
+              :disabled="currentPage >= pageCount"
+              @click="browse.update({ page: currentPage + 1 })"
+              >Next</v-btn
+            >
           </nav>
         </section>
+        <details class="browser-settings">
+          <summary>Browser preferences</summary>
+          <p>
+            Favorites stay in this browser. Automatic updates run every 5 minutes while this page is
+            visible and focused.
+          </p>
+          <button type="button" class="text-button" @click="resetFavorites">Reset favorites</button
+          ><button
+            type="button"
+            class="text-button"
+            :disabled="uploads.busy.value"
+            @click="clearCache"
+          >
+            Clear saved video cache
+          </button>
+          <p role="status">{{ settingsMessage }}</p>
+        </details>
       </v-col>
     </v-row>
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { computed, ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { readPreference, savePreference, parsePageSize } from '@/utils/preferences'
-import { readVideoCache, writeVideoCache } from '@/utils/videoCache'
-import type { YoutubeVideo } from '@/types/youtube'
-import type { MemberWithComputed } from '@/types/member'
 import { storeToRefs } from 'pinia'
 import { useMemberStore } from '@/stores/member.store'
-
-import StreamingList from '@/components/StreamingList.vue'
-import MemberList from '@/components/MemberList.vue'
-import NewVideoList from '@/components/NewVideoList.vue'
+import { usePreferencesStore } from '@/stores/preferences.store'
+import { useBrowseFilters } from '@/composables/useBrowseFilters'
+import { useUploads } from '@/composables/useUploads'
+import { useRefresh } from '@/composables/useRefresh'
+import { useFeedAnchor } from '@/composables/useFeedAnchor'
+import { receivedAgo, stateKey } from '@/utils/browserState'
+import { serializeBrowse } from '@/utils/browseQuery'
 import { isPsTwitchStream } from '@/utils'
-
-const membersDrawer = ref(false)
-
-const memberStore = useMemberStore()
-const { sortedMembers, streamingMembers, loading, error } = storeToRefs(memberStore)
-
-const onlyProjectSingularity = ref(readPreference('project-videos') !== 'false')
-const onlyProjectSingularityStreams = ref(readPreference('project-streams') !== 'false')
-watch(onlyProjectSingularity, value => savePreference('project-videos', String(value)))
-watch(onlyProjectSingularityStreams, value => savePreference('project-streams', String(value)))
-
-const isDevelopment = import.meta.env.DEV
-const demo = ref(false)
-const demoStreams = ref<MemberWithComputed[]>([])
-watch(demo, async enabled => {
-  if (import.meta.env.DEV && enabled) demoStreams.value = (await import('@/dev/streams')).demoStreams
-})
-const filteredStreamingMembers = computed(() => {
-  if (demo.value && isDevelopment) return demoStreams.value
-  if (!onlyProjectSingularityStreams.value) {
-    return streamingMembers.value
-  }
-
-  const filteredStreamers = streamingMembers.value.filter((member) => {
-    const title = member.twitchStream?.title ?? ''
-    const isTwitchLive =
-      !!member.twitchStream?.isLive && isPsTwitchStream(title)
-
-    const yt = member.latestYoutubeVideo
-    const isYtPsLive = !!yt && yt.state === 'live' && yt.isProjectSingularity
-
-    return isTwitchLive || isYtPsLive
-  })
-
-  return filteredStreamers
-})
+import type { MemberWithComputed } from '@/types/member'
+import MemberList from '@/components/MemberList.vue'
+import StreamingList from '@/components/StreamingList.vue'
+import NewVideoList from '@/components/NewVideoList.vue'
+import RefreshButton from '@/components/RefreshButton.vue'
 
 const route = useRoute()
 const router = useRouter()
-const pageSize = ref(parsePageSize(route.query.pageSize) ?? parsePageSize(readPreference('page-size')) ?? 10)
-const search = ref('')
-const creator = ref('')
-const loadedVideos = ref<YoutubeVideo[]>([])
-const pageLoading = ref(false)
-const pageError = ref('')
-const pageIndex = ref(0)
-const nextCursor = ref<string | null>(null)
-const loadingAll = ref(false)
-const waitingForLimit = ref(false)
-const retrySeconds = ref(0)
-const cacheWarning = ref(false)
-const cacheKey = String(import.meta.env.VITE_API_BASE_URL)
-let disposed = false
-const retryAll = ref(false)
-let controller: AbortController | undefined
-function cancelLoading() { controller?.abort() }
-function pause(ms: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const abort = () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')) }
-    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, ms)
-    signal.addEventListener('abort', abort, { once: true })
-    if (signal.aborted) abort()
-  })
-}
-async function fetchBatch(signal: AbortSignal, refresh = false) {
-  const cursor = refresh ? null : nextCursor.value
-  const params = new URLSearchParams({ limit: cursor ? '500' : '100' })
-  if (cursor) params.set('cursor', cursor)
-  for (let attempt = 0; ; attempt++) {
-    const response = await fetch(import.meta.env.VITE_API_BASE_URL + '/youtube/uploads?' + params, { signal })
-    const retryAfter = Number(response.headers.get('Retry-After'))
-    if ((response.status === 429 || response.status === 503) && retryAfter > 0 && retryAfter <= 120 && attempt < 2) {
-      waitingForLimit.value = true
-      for (retrySeconds.value = Math.ceil(retryAfter); retrySeconds.value > 0; retrySeconds.value--) await pause(1000, signal)
-      waitingForLimit.value = false
-      continue
-    }
-    if (!response.ok) throw new Error('Could not load videos (HTTP ' + response.status + '). Please retry.')
-    const data = await response.json() as { videos: YoutubeVideo[]; nextCursor: string | null }
-    if (data.nextCursor && data.nextCursor === cursor) throw new Error('Video history did not advance. Please retry.')
-    const existing = new Map(loadedVideos.value.map(video => [video.videoId, video]))
-    const overlaps = data.videos.some(video => existing.has(video.videoId))
-    for (const video of data.videos) existing.set(video.videoId, video)
-    loadedVideos.value = [...existing.values()].sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '') || b.videoId.localeCompare(a.videoId))
-    if (!refresh || !overlaps) nextCursor.value = data.nextCursor
-    // Strip Vue proxies before writing a structured-clone snapshot to IndexedDB.
-    cacheWarning.value = !await writeVideoCache(cacheKey, JSON.parse(JSON.stringify({ videos: loadedVideos.value, nextCursor: nextCursor.value })))
-    return
-  }
-}
-const filteredVideos = computed(() => {
-  const query = search.value.trim().toLocaleLowerCase()
-  return loadedVideos.value.filter(video =>
-    (!onlyProjectSingularity.value || video.isProjectSingularity) &&
-    (!creator.value || video.memberId === Number(creator.value)) &&
-    (!query || [video.title, video.description].some(text => text?.toLocaleLowerCase().includes(query))))
+const membersDrawer = ref(false)
+const storageWarning = ref(false)
+const preferences = usePreferencesStore()
+const memberStore = useMemberStore()
+const { sortedMembers, streamingMembers, loading, sourceState } = storeToRefs(memberStore)
+const browse = useBrowseFilters(() => {
+  storageWarning.value = true
 })
-const pageCount = computed(() => Math.max(1, Math.ceil(filteredVideos.value.length / pageSize.value)))
-const pageVideos = computed(() => filteredVideos.value.slice(pageIndex.value * pageSize.value, (pageIndex.value + 1) * pageSize.value))
+const { filters } = browse
+const shared = route.query.shared === '1'
+const personal = reactive({
+  videoFavorites: !shared && preferences.videoFavorites,
+  streamFavorites: !shared && preferences.streamFavorites,
+})
+const modeNames = {
+  videoFavorites: 'video-favorites',
+  streamFavorites: 'stream-favorites',
+} as const
+function setMode(mode: keyof typeof personal, value: boolean) {
+  personal[mode] = value
+  preferences.setMode(modeNames[mode], value)
+  if (mode !== 'streamFavorites') browse.update({ page: 1 })
+}
+const uploads = useUploads()
+const filteredVideos = computed(() => {
+  const query = filters.q.trim().toLocaleLowerCase()
+  return uploads.videos.value.filter(
+    (video) =>
+      (!filters.project || video.isProjectSingularity) &&
+      (filters.creators === null || filters.creators.includes(video.memberId)) &&
+      (!personal.videoFavorites || preferences.favoriteIds.includes(video.memberId)) &&
+      (!query ||
+        [video.title, video.description].some((text) => text?.toLocaleLowerCase().includes(query))),
+  )
+})
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(filteredVideos.value.length / filters.pageSize)),
+)
+const currentPage = computed(() => Math.min(filters.page, pageCount.value))
+const pageVideos = computed(() =>
+  filteredVideos.value.slice(
+    (currentPage.value - 1) * filters.pageSize,
+    currentPage.value * filters.pageSize,
+  ),
+)
 const media = window.matchMedia('(max-width: 600px)')
 const narrow = ref(media.matches)
-const onResize = () => { narrow.value = media.matches }
-const videoColumns = computed(() => narrow.value ? [pageVideos.value] : [pageVideos.value.filter((_, i) => i % 2 === 0), pageVideos.value.filter((_, i) => i % 2 === 1)])
-watch([onlyProjectSingularity, search, creator, pageSize], () => { pageIndex.value = 0 })
-watch(pageSize, value => {
-  savePreference('page-size', String(value))
-  void router.replace({ query: { ...route.query, pageSize: String(value) } })
-})
-watch(() => route.query.pageSize, value => {
-  pageSize.value = parsePageSize(value) ?? parsePageSize(readPreference('page-size')) ?? 10
-})
-async function loadVideos(all = false, refresh = false) {
-  if (pageLoading.value) return
-  pageLoading.value = true
-  pageError.value = ''
-  loadingAll.value = all
-  retryAll.value = all
-  controller = new AbortController()
-  const signal = controller.signal
-  try {
-    do { await fetchBatch(signal, refresh) } while (all && nextCursor.value && !signal.aborted)
-  } catch (error) {
-    if (!signal.aborted) pageError.value = error instanceof Error ? error.message : 'Could not load videos.'
-  } finally { pageLoading.value = false; loadingAll.value = false; waitingForLimit.value = false }
+const onResize = () => {
+  narrow.value = media.matches
 }
+const videoColumns = computed(() =>
+  narrow.value
+    ? [pageVideos.value]
+    : [
+        pageVideos.value.filter((_, i) => i % 2 === 0),
+        pageVideos.value.filter((_, i) => i % 2 === 1),
+      ],
+)
+const { keepPosition } = useFeedAnchor()
+let failedSourcesOnly = false
+const refresh = useRefresh({
+  streams: () => {
+    const failedOnly = failedSourcesOnly
+    failedSourcesOnly = false
+    return memberStore.refreshStreams(failedOnly)
+  },
+  videos: () => keepPosition(() => uploads.refresh()),
+})
+const videoCooldown = computed(() =>
+  Math.max(
+    refresh.videoSeconds.value,
+    Math.ceil((uploads.retryAt.value - refresh.now.value) / 1000),
+    0,
+  ),
+)
+const streamCooldown = computed(() =>
+  Math.max(
+    refresh.streamSeconds.value,
+    ...Object.values(sourceState.value).map((source) =>
+      Math.ceil((source.retryAt - refresh.now.value) / 1000),
+    ),
+    0,
+  ),
+)
+function retryFailedStreams() {
+  failedSourcesOnly = true
+  void refresh.refresh('streams')
+}
+const isDevelopment = import.meta.env.DEV
+const demo = ref(false)
+const demoStreams = ref<MemberWithComputed[]>([])
+watch(demo, async (enabled) => {
+  if (import.meta.env.DEV && enabled)
+    demoStreams.value = (await import('@/dev/streams')).demoStreams
+})
+const allStreams = computed(() =>
+  demo.value && isDevelopment ? demoStreams.value : streamingMembers.value,
+)
+const filteredStreams = computed(() =>
+  allStreams.value
+    .filter(
+      (member) =>
+        (!personal.streamFavorites || preferences.favoriteIds.includes(member.memberId)) &&
+        (filters.streamCreators === null || filters.streamCreators.includes(member.memberId)) &&
+        (!filters.streamProject ||
+          (member.twitchStream?.isLive && isPsTwitchStream(member.twitchStream.title ?? '')) ||
+          (member.latestYoutubeVideo?.state === 'live' &&
+            member.latestYoutubeVideo.isProjectSingularity)),
+    )
+    .sort(
+      (a, b) =>
+        Number(preferences.favoriteIds.includes(b.memberId)) -
+          Number(preferences.favoriteIds.includes(a.memberId)) || a.alias.localeCompare(b.alias),
+    ),
+)
+const streamsKnown = computed(
+  () =>
+    !!sourceState.value.members.receivedAt &&
+    !!(sourceState.value.youtube.receivedAt || sourceState.value.twitch.receivedAt),
+)
+const streamIssues = computed(() =>
+  (['members', 'youtube', 'twitch'] as const)
+    .filter((name) => sourceState.value[name].error)
+    .map(
+      (name) =>
+        `${{ members: 'Members', youtube: 'YouTube', twitch: 'Twitch' }[name]} unavailable.`,
+    )
+    .join(' '),
+)
+function sourceStatus(name: 'youtube' | 'twitch') {
+  const source = sourceState.value[name]
+  if (!source.receivedAt) return source.loading ? 'Loading…' : 'Not received'
+  return `${receivedAgo(source.receivedAt, refresh.now.value)}${source.error ? ' · Refresh failed' : ''}`
+}
+const streamEmpty = computed(() =>
+  !streamsKnown.value && !demo.value
+    ? 'Could not determine who is live. Use Refresh to try again.'
+    : personal.streamFavorites && !preferences.favoriteIds.length
+      ? 'Star some creators to see your favorite streams here.'
+      : allStreams.value.length
+        ? 'No active creators match these filters.'
+        : streamIssues.value
+          ? 'No live streams in the available data. Some sources could not be refreshed.'
+          : 'No creators are live right now.',
+)
+const videoEmpty = computed(() =>
+  personal.videoFavorites && !preferences.favoriteIds.length
+    ? 'Star some creators to build your video feed.'
+    : uploads.error.value && !uploads.videos.value.length
+      ? 'Videos could not be loaded. Use Refresh to retry.'
+      : uploads.videos.value.length
+        ? `No loaded videos match these filters.${uploads.nextCursor.value ? ' Load all videos to search older history.' : ''}`
+        : 'No uploads found.',
+)
+const creatorValue = computed(() =>
+  filters.creators === null ? '' : filters.creators.length ? filters.creators.join(',') : 'none',
+)
+function selectCreator(value: string) {
+  browse.update({ creators: value ? (value === 'none' ? [] : value.split(',').map(Number)) : null })
+}
+function chooseFavorites() {
+  if (window.matchMedia('(max-width: 959px)').matches) membersDrawer.value = true
+  else document.getElementById('members-heading')?.focus()
+}
+function resetStreamFilters() {
+  setMode('streamFavorites', false)
+  browse.update({ streamProject: false, streamCreators: null, page: filters.page })
+}
+function resetVideoFilters() {
+  personal.videoFavorites = false
+  preferences.setMode('video-favorites', false)
+  browse.update({ q: '', creators: null, project: false })
+}
+async function loadHistory() {
+  await keepPosition(() => uploads.loadAll())
+}
+const shareOpen = ref(false)
+const shareMessage = ref('')
+const canShare = typeof navigator.share === 'function'
+const shareUrl = computed(() => {
+  const intersect = (ids: number[] | null, favorite: boolean) =>
+    !favorite ? ids : preferences.favoriteIds.filter((id) => ids === null || ids.includes(id))
+  const query = {
+    ...serializeBrowse({
+      ...filters,
+      creators: intersect(filters.creators, personal.videoFavorites),
+      streamCreators: intersect(filters.streamCreators, personal.streamFavorites),
+      page: 1,
+    }),
+    shared: '1',
+  }
+  return new URL(router.resolve({ path: '/', query }).href, window.location.origin).href
+})
+watch(shareUrl, () => {
+  shareMessage.value = ''
+})
+function prepareShare() {
+  shareOpen.value = true
+  shareMessage.value = ''
+}
+async function copyShare() {
+  try {
+    await navigator.clipboard.writeText(shareUrl.value)
+    shareMessage.value = 'Link copied.'
+  } catch {
+    shareMessage.value = 'Select the link above and copy it manually.'
+  }
+}
+async function nativeShare() {
+  try {
+    await navigator.share({ title: 'Project Singularity', url: shareUrl.value })
+  } catch {
+    shareMessage.value = 'You can copy the link instead.'
+  }
+}
+const settingsMessage = ref('')
+async function clearCache() {
+  settingsMessage.value = (await uploads.clearCache())
+    ? 'Saved video cache cleared. Currently displayed videos remain available.'
+    : 'The saved cache could not be cleared. Browser storage may be unavailable.'
+}
+function resetFavorites() {
+  preferences.reset()
+  Object.assign(personal, {
+    videoFavorites: false,
+    streamFavorites: false,
+  })
+  settingsMessage.value = 'Favorites reset. Your video cache is unchanged.'
+}
+function storageChanged(event: StorageEvent) {
+  if (event.key === stateKey('favorites')) preferences.sync()
+}
+let disposed = false
 onMounted(async () => {
   media.addEventListener('change', onResize)
-  savePreference('page-size', String(pageSize.value))
-  const hydration = memberStore.hydrate()
-  const cached = await readVideoCache(cacheKey)
-  if (disposed) return
-  if (cached) { loadedVideos.value = cached.videos; nextCursor.value = cached.nextCursor }
-  await Promise.all([hydration, loadVideos(false, true)])
+  window.addEventListener('storage', storageChanged)
+  await Promise.all([memberStore.hydrate(), uploads.initialize()])
+  if (!disposed) refresh.start()
 })
-onUnmounted(() => { disposed = true; media.removeEventListener('change', onResize); cancelLoading() })
+onUnmounted(() => {
+  disposed = true
+  media.removeEventListener('change', onResize)
+  window.removeEventListener('storage', storageChanged)
+})
 </script>
 
 <style scoped>
-.project-filter { margin: 8px 0 20px; }
-.video-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
-.video-filters label { display: grid; gap: 6px; font-size: .875rem; }
-.video-filters label:first-child { flex: 1; min-width: 180px; }
-.video-filters input, .video-filters select { color: inherit; background: #172126; border: 1px solid #72808a; border-radius: 8px; padding: 10px 12px; }
-.result-count { font-size: .875rem; margin-bottom: 16px; opacity: .85; }
-.video-columns { display: flex; align-items: flex-start; gap: 1rem; }
-.video-columns .video-column { flex: 1; min-width: 0; }
-.history-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-.home-container { max-width: 1440px !important; padding: 24px; }
-.media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-.media-grid > li { min-width: 0; }
+.home-container {
+  max-width: 1440px !important;
+  padding: 0 24px 24px;
+}
+.hero-row {
+  margin-top: 0;
+  margin-bottom: clamp(28px, 4vw, 52px);
+  /* Fade the artwork into the dark backdrop before the content starts. */
+  mask-image: linear-gradient(to bottom, black 0%, black 78%, transparent 100%);
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+}
+.hero-img {
+  display: block;
+  width: 100%;
+  max-width: 680px;
+  height: auto;
+}
+.fade-edges {
+  mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+}
+.drawer-75 {
+  max-width: 75% !important;
+}
+.drawer-hint {
+  padding: 12px 16px;
+  font-size: 0.85rem;
+}
+.section-heading,
+.section-options,
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.section-heading {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.section-options {
+  margin: 8px 0 16px;
+}
+.section-hint {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  margin: 8px 0 16px;
+}
+.project-filter {
+  flex: 0 1 auto;
+  margin: 0;
+}
+.segmented {
+  display: inline-flex;
+  border: 1px solid #718087;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.segmented button {
+  padding: 8px 12px;
+  min-height: 40px;
+  font-size: 0.85rem;
+}
+.segmented button[aria-pressed='true'] {
+  background: #d6f3e7;
+  color: #18342d;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.videos-section {
+  margin-top: 36px;
+}
+.video-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.video-filters label,
+.share-panel label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.875rem;
+}
+.video-filters label:first-child {
+  flex: 1;
+  min-width: 180px;
+}
+.video-filters input,
+.video-filters select,
+.share-panel input {
+  color: inherit;
+  background: #172126;
+  border: 1px solid #72808a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  max-width: 100%;
+}
+.share-button {
+  margin-bottom: 16px;
+}
+.text-button {
+  padding: 8px;
+  min-height: 40px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 0.875rem;
+}
+.result-count {
+  font-size: 0.875rem;
+  margin-bottom: 8px;
+  opacity: 0.9;
+}
+.freshness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin-bottom: 12px;
+}
+.status-message,
+.share-panel {
+  padding: 12px;
+  border: 1px solid #647b76;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 0.875rem;
+}
+.share-panel input {
+  width: 100%;
+}
+.share-panel p {
+  margin-top: 8px;
+}
+.history-controls {
+  margin-bottom: 16px;
+}
+.empty-state {
+  padding: 20px 0;
+}
 .list {
   list-style: none;
   width: 100%;
@@ -291,28 +802,50 @@ onUnmounted(() => { disposed = true; media.removeEventListener('change', onResiz
   padding: 0;
   margin: 0;
 }
-
-.fade-edges {
-  mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
-  mask-repeat: no-repeat;
-  mask-size: 100% 100%;
+.media-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
 }
-
-.hero-img {
-  display: block;
-  width: 100%;
-  max-width: 680px;
-  height: auto;
+.media-grid > li {
+  min-width: 0;
 }
-
-.drawer-75 {
-  max-width: 75% !important;
+.video-columns {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
 }
-.pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
-.pagination-top { margin-top: 0; margin-bottom: 24px; }
-
+.video-column {
+  flex: 1;
+  min-width: 0;
+}
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+.pagination-top {
+  margin: 12px 0 24px;
+}
+.browser-settings {
+  margin-top: 32px;
+  font-size: 0.875rem;
+}
+.browser-settings summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
 @media (max-width: 600px) {
-  .home-container { padding: 16px; }
-  .media-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-container {
+    padding: 0 16px 16px;
+  }
+  .media-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .section-heading h2 {
+    font-size: 1.35rem;
+  }
 }
 </style>

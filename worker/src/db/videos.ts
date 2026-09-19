@@ -1,7 +1,7 @@
 import { Env } from '../env'
 import { videoToRow } from '../mappers/videoMapper'
 import { VideoLiveStatusRow, VideoRow, VideoRowWithState } from '../types/db'
-import type { Video, YoutubeLivestreamResponseItem } from '../types/youtube'
+import type { Video } from '../types/youtube'
 
 export async function upsertVideos(env: Env, videos: Video[]) {
   if (videos.length === 0) return
@@ -35,7 +35,7 @@ export async function upsertVideos(env: Env, videos: Video[]) {
   for (let i = 0; i < rows.length; i += CHUNK) {
     const slice = rows.slice(i, i + CHUNK)
 
-    const res = await env.DB.batch(
+    await env.DB.batch(
       slice.map((r) =>
         stmt.bind(
           r.VideoId,
@@ -51,9 +51,6 @@ export async function upsertVideos(env: Env, videos: Video[]) {
       ),
     )
 
-    // const rows_read = res.reduce((sum, item) => sum + item.meta.rows_read, 0)
-    // const rows_written = res.reduce((sum, item) => sum + item.meta.rows_written, 0)
-    // console.log(`Rows written: ${rows_written}\nRows read: ${rows_read}`)
   }
 }
 
@@ -117,7 +114,6 @@ export async function ensureLiveStatusRows(
 ): Promise<VideoLiveStatusRow[]> {
   if (videoIds.length === 0) return []
   const toReturn: VideoLiveStatusRow[] = []
-  const params: unknown[] = []
 
   const stmt = env.DB.prepare(`
       INSERT INTO VideoLiveStatus (
@@ -141,9 +137,6 @@ export async function ensureLiveStatusRows(
       )
     )
 
-    const rows_read = res.reduce((sum, item) => sum + item.meta.rows_read, 0)
-    const rows_written = res.reduce((sum, item) => sum + item.meta.rows_written, 0)
-    // console.log(`Rows written: ${rows_written}\nRows read: ${rows_read}`)
     for (const r of res) {
       if (r.results?.length){
         toReturn.push(...r.results)
@@ -171,7 +164,7 @@ export async function getLiveStatusesForVideoIds(env: Env, videoIds: string[]): 
   return data
 }
 
-export async function patchVideoLiveStatus(env: Env, videoLiveStatuses: VideoLiveStatusRow[], now = Date.now()) {
+export async function patchVideoLiveStatus(env: Env, videoLiveStatuses: VideoLiveStatusRow[]) {
   if (videoLiveStatuses.length === 0) return
 
   const stmt = env.DB.prepare(`
@@ -191,7 +184,7 @@ export async function patchVideoLiveStatus(env: Env, videoLiveStatuses: VideoLiv
   for (let i = 0; i < videoLiveStatuses.length; i += CHUNK) {
     const slice = videoLiveStatuses.slice(i, i + CHUNK)
 
-    const res = await env.DB.batch(
+    await env.DB.batch(
       slice.map((v) =>
         stmt.bind(
           v.State,
@@ -206,7 +199,5 @@ export async function patchVideoLiveStatus(env: Env, videoLiveStatuses: VideoLiv
       )
     )
 
-    const rows_read = res.reduce((sum, item) => sum + item.meta.rows_read, 0)
-    const rows_written = res.reduce((sum, item) => sum + item.meta.rows_written, 0)
   }
 }

@@ -289,6 +289,23 @@ describe('YouTube push through the actual Worker and D1', () => {
     expect((await job())!.NextAttemptAt).toBeGreaterThan(Date.now() + 30 * 60_000)
   })
 
+  it('revokes live status on the first omitted response and recovers when available again', async () => {
+    runtime.upstream.phase = 'live'
+    await deliver()
+    await runtime.sync()
+    runtime.upstream.omittedIds.add(videoId)
+    await runtime.db.prepare('UPDATE YoutubeInbox SET NextAttemptAt=0').run()
+    await runtime.sync()
+    expect(await runtime.db.prepare('SELECT State FROM VideoLiveStatus').first('State')).toBe('inactive')
+    expect(await job()).toMatchObject({ Attempts: 1, LastError: 'video-unavailable' })
+    runtime.upstream.omittedIds.clear()
+    runtime.upstream.phase = 'ended'
+    await runtime.db.prepare('UPDATE YoutubeInbox SET NextAttemptAt=0').run()
+    await runtime.sync()
+    expect(await runtime.db.prepare('SELECT State FROM VideoLiveStatus').first('State')).toBe('video')
+    expect(await job()).toMatchObject({ Attempts: 0, NextAttemptAt: null })
+  })
+
   it('does not duplicate enrichment during overlapping scheduled runs', async () => {
     await deliver()
     await Promise.all([runtime.sync(), runtime.sync()])

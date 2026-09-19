@@ -31,6 +31,8 @@ export async function routeRequest (
 
   } catch (err) {
     console.error(JSON.stringify({ operation: 'public-read', path: url.pathname, reason: failureReason(err) }))
-    return withCors(JSON.stringify({ error: 'There was a server-side error' }), { status: 500 })
+    return withCors(JSON.stringify({ error: 'There was a server-side error' }), {
+      status: 500, headers: { 'Cache-Control': 'no-store' },
+    })
   }
 }

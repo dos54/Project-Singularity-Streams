@@ -35,6 +35,21 @@ describe('Worker + real local D1 + mocked upstream services', () => {
     expect(runtime.upstream.calls.atom).toBe(0)
   })
 
+  it.each([
+    { table: 'Videos', path: '/youtube/videos' },
+    { table: 'Members', path: '/members' },
+  ])('returns an uncached JSON server error when $path database queries fail', async ({ table, path }) => {
+    await runtime.db.prepare(`ALTER TABLE ${table} RENAME TO UnavailableTable`).run()
+    const response = await runtime.mf.dispatchFetch(`http://local${path}`)
+    expect(response.status).toBe(500)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(response.headers.get('Content-Type')).toBe('application/json')
+    expect(await response.json()).toMatchObject({ error: expect.any(String) })
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    await runtime.db.prepare(`ALTER TABLE UnavailableTable RENAME TO ${table}`).run()
+    expect((await runtime.mf.dispatchFetch(`http://local${path}`)).status).toBe(200)
+  })
+
   it('runs the actual scheduled entry point and serves sorted persisted videos', async () => {
     runtime.upstream.entriesPerChannel = 2
     await runtime.sync()

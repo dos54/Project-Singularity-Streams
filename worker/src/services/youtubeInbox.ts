@@ -75,6 +75,12 @@ export async function processInbox(env: Env, now = Date.now()) {
       continue
     }
     if (!item?.snippet) {
+      // A successful API response that omits a video is not evidence it is still live.
+      // Retain retry work, but revoke the previous live claim immediately.
+      if (!item) {
+        await env.DB.prepare("UPDATE VideoLiveStatus SET State='inactive',LastChecked=?,ScheduledStartTime=NULL,ActiveLiveChatId=NULL,ConcurrentViewers=NULL WHERE VideoId=? AND State='live'")
+          .bind(now, job.VideoId).run()
+      }
       // Private/deleted videos are omitted by videos.list. Retry eventual publication first.
       if (job.Attempts >= 5) {
         await env.DB.prepare("UPDATE VideoLiveStatus SET State='inactive',LastChecked=?,ScheduledStartTime=NULL,ActualStartTime=NULL,ActualEndTime=NULL WHERE VideoId=?")

@@ -1,51 +1,25 @@
-import { Env } from '../env'
+import type { Env } from '../env'
 import { withCors } from '../utils/http'
-import { returnAllVideos, syncFeed } from '../services/youtubeService'
+import { returnAllVideos } from '../services/youtubeService'
 import { uploadPage } from '../services/uploadPages'
 
 export async function youtubeController(
   req: Request,
   env: Env,
-  ctx: ExecutionContext,
+  _ctx: ExecutionContext,
 ): Promise<Response> {
   const url = new URL(req.url)
-  const { pathname } = url
-  const segments = url.pathname.split('/').filter(Boolean)
-
-  try {
-    switch (segments[1]) {
-      case 'uploads':
-        return withCors(JSON.stringify(await uploadPage(env, url)), {
-          headers: { 'Cache-Control': 'public, max-age=30' },
-        })
-      // case 'refresh': {
-      //   await syncFeed(env)
-      //   return new Response(
-      //     'Attempting to update feed...',
-      //     { status: 200 }
-      //   )
-      // }
-
-      case 'videos': {
-        try {
-          const  videos = await returnAllVideos(env)
-          return withCors(JSON.stringify({ videos }), {
-            headers: {
-              'Cache-Control': 'public, max-age=30, stale-while-revalidate=30'
-            }
-          })
-        } catch (err) {
-          console.error('youtubeController Error:', err)
-        }
-      }
-
-      default:
-        return new Response(
-          'Not found',
-          {status: 404}
-        )
-    }
-  } catch (err) {
-    return withCors(JSON.stringify({ error: 'There was a server error' }), {status: 500})
+  // Let the shared router turn failures into JSON 500 responses with CORS.
+  switch (url.pathname) {
+    case '/youtube/uploads':
+      return withCors(JSON.stringify(await uploadPage(env, url)), {
+        headers: { 'Cache-Control': 'public, max-age=30' },
+      })
+    case '/youtube/videos':
+      return withCors(JSON.stringify({ videos: await returnAllVideos(env) }), {
+        headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=30' },
+      })
+    default:
+      return new Response('Not found', { status: 404 })
   }
 }

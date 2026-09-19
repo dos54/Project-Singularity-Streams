@@ -6,7 +6,7 @@ import { withCors } from '../utils/http'
 export async function twitchController(
   request: Request,
   env: Env,
-  ctx: ExecutionContext,
+  _ctx: ExecutionContext,
 ) {
   const url = new URL(request.url)
   const segments = url.pathname.split('/').filter(Boolean)
