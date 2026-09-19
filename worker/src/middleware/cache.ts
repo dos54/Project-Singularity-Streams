@@ -45,7 +45,6 @@ export async function withCache(
 
   const hit = await cache.match(key)
   if (hit) {
-    console.log('Serving cached content', key.url)
     return hit
   }
 
@@ -56,7 +55,7 @@ export async function withCache(
 
     cached.headers.set(
       'Cache-Control',
-      `public, max-age=${opts.ttlSeconds}, stale-while-revalidating=${opts.ttlSeconds}`
+      `public, max-age=${opts.ttlSeconds}, stale-while-revalidate=${opts.ttlSeconds}`
     )
 
     ctx.waitUntil(cache.put(key, cached.clone()))

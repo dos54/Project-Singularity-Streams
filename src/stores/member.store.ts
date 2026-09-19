@@ -23,7 +23,7 @@ export const useMemberStore = defineStore('members', () => {
   const membersWithStreams = computed<MemberWithComputed[]>(() =>
     members.value.map((m) => ({
       ...m,
-      twitchStream: m.twitch ? (twitchStreams.value[m.twitch] ?? null) : null,
+      twitchStream: m.twitch ? (twitchStreams.value[m.twitch.toLowerCase()] ?? null) : null,
       latestYoutubeVideo:
         youtubeLiveByMemberId.value[m.memberId] ??
         currentYoutubeByMemberId.value[m.memberId] ??
@@ -90,15 +90,14 @@ export const useMemberStore = defineStore('members', () => {
 
   // --- actions ---
   async function fetchMembers() {
-    loading.value = true
     try {
       const res = await fetch(`${API_BASE}/members`)
       if (!res.ok) throw new Error('Failed to fetch members')
 
       const data = (await res.json()) as MembersResponse
       members.value = data.members
-    } finally {
-      loading.value = false
+    } catch (e) {
+      error.value = e instanceof Error ? e : new Error('Failed to fetch members')
     }
   }
 
@@ -108,7 +107,7 @@ export const useMemberStore = defineStore('members', () => {
       if (!res.ok) throw new Error('Failed to fetch Twitch livestreams')
 
       const data = (await res.json()) as TwitchLivestreamsResponse
-      twitchStreams.value = Object.fromEntries(data.liveStreams.map((s) => [s.login, s]))
+      twitchStreams.value = Object.fromEntries(data.liveStreams.map((s) => [s.login.toLowerCase(), s]))
     } catch (e) {
       error.value = e instanceof Error ? e : new Error('Unknown error')
     }
@@ -128,7 +127,9 @@ export const useMemberStore = defineStore('members', () => {
 
   async function hydrate() {
     error.value = null
-    await Promise.all([fetchMembers(), fetchTwitchLivestreams(), fetchYoutubeVideos()])
+    loading.value = true
+    try { await Promise.all([fetchMembers(), fetchTwitchLivestreams(), fetchYoutubeVideos()]) }
+    finally { loading.value = false }
   }
 
   return {

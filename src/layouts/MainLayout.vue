@@ -27,8 +27,18 @@ const buildDate = import.meta.env.VITE_BUILD_DATE ?? ''
 
 <style scoped>
 .main-container {
+  position: relative;
+  isolation: isolate;
+}
+.main-container::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background-image: url('/bubble-nebula.jpg');
   background-position: center;
   background-size: cover;
+  background-repeat: no-repeat;
 }
 </style>

@@ -14,28 +14,9 @@ export function isProjectSingularityVideo(video: Video): boolean {
 }
 
 export function determineLiveStatus(liveStatus: VideoLiveStatus): Status {
-  if (
-    liveStatus.actualStartTime &&
-    (liveStatus.concurrentViewers !== null || liveStatus.activeLiveChatId !== null)
-  ) {
-    return Status.live
-  }
-
-  if (
-    liveStatus.actualStartTime ||
-    liveStatus.actualEndTime ||
-    liveStatus.activeLiveChatId === null
-  ) {
-    return Status.video
-  }
-
-  if (
-    liveStatus.actualStartTime ||
-    liveStatus.actualEndTime ||
-    liveStatus.activeLiveChatId !== null
-  ) {
-    return Status.inactive
-  }
-
-  return Status.inactive
+  if (liveStatus.actualEndTime) return Status.video
+  if (liveStatus.actualStartTime) return Status.live
+  // Keep the existing public/SQL enum: inactive includes upcoming streams.
+  if (liveStatus.scheduledStartTime) return Status.inactive
+  return Status.video
 }

@@ -4,6 +4,7 @@ export interface VideoResponseDto {
   memberId: number,
   videoId: string,
   title: string,
+  description?: string | null,
   publishedAt: string,
   thumbnailUrl: string | null,
   isProjectSingularity: boolean,

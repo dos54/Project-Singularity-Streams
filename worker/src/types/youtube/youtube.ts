@@ -27,6 +27,7 @@ export interface VideoLiveStatus {
   actualEndTime: string | null
   activeLiveChatId: string | null
   concurrentViewers: number | null
+  scheduledStartTime?: string | null
 }
 
 export type VideoWithLiveStatus = Video & {
@@ -40,9 +41,10 @@ export interface YoutubeLivestreamResponseItem {
   etag: string
   id: string
   liveStreamingDetails: {
+    scheduledStartTime?: string | null
     actualStartTime: string | null
     actualEndTime: string | null
     activeLiveChatId: string | null
-    concurrentViewers: number | null
+    concurrentViewers: number | string | null
   } | null
 }

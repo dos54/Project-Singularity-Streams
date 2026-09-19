@@ -29,6 +29,7 @@ export interface VideoLiveStatusRow {
   ActualEndTime: string | null
   ActiveLiveChatId: string | null
   ConcurrentViewers: number | null
+  ScheduledStartTime?: string | null
 }
 
 export interface VideoRowWithState extends VideoRow {

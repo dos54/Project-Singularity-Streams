@@ -4,4 +4,5 @@ export interface TwitchLivestream {
   title: string | null
   gameName: string | null
   viewerCount: number | null
+  thumbnailUrl?: string | null
 }

@@ -1,0 +1,5 @@
+# Copy to .dev.vars for manual local development only. Never commit real secrets.
+YOUTUBE_API_KEY=""
+TWITCH_CLIENT_SECRET=""
+# Generate a random signing secret (32-199 bytes) before enabling push.
+YOUTUBE_WEBHOOK_SECRET=""

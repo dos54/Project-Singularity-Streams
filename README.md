@@ -30,3 +30,12 @@ The live version of the site can be found [here](https://dos54.github.io/Project
 
 For bugs, feature request, etc. you can create an issue in the [issue tracker](https://github.com/dos54/Project-Singularity-Streams/issues).  
 I am busy with school and work so I cannot guarantee that changes will be quick; however, I will do what I can.
+
+## Backend development
+
+Run `npm ci` and `npm run check:backend` from the repository root with Node 24. The backend suite uses local D1/KV and mocked upstream services; no credentials are needed.
+
+- [Backend test coverage](docs/backend-testing.md)
+- [YouTube push setup, data flow, monitoring and rollback](docs/youtube-push-operations.md)
+
+Push ingestion is off by default. Apply migration 0006 before deploying this Worker version, then configure the callback and secrets before enabling it. Use separate staging resources: the existing Wrangler `env.dev` repeats production binding IDs.

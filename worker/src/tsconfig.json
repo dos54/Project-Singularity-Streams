@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "strict": true,
 
-    "lib": ["ES2022", "WebWorker"],
+    "lib": ["ES2022"],
     "types": ["@cloudflare/workers-types"]
   }
 }

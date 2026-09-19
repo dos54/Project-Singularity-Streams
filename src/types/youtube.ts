@@ -1,6 +1,7 @@
 export type YoutubeState = 'live' | 'ended' | 'video' | 'inactive'
 
 export interface YoutubeVideo {
+  description?: string | null
   memberId: number
   videoId: string
   title: string | null

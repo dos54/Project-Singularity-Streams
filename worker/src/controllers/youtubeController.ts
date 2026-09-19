@@ -1,6 +1,7 @@
 import { Env } from '../env'
 import { withCors } from '../utils/http'
 import { returnAllVideos, syncFeed } from '../services/youtubeService'
+import { uploadPage } from '../services/uploadPages'
 
 export async function youtubeController(
   req: Request,
@@ -13,6 +14,10 @@ export async function youtubeController(
 
   try {
     switch (segments[1]) {
+      case 'uploads':
+        return withCors(JSON.stringify(await uploadPage(env, url)), {
+          headers: { 'Cache-Control': 'public, max-age=30' },
+        })
       // case 'refresh': {
       //   await syncFeed(env)
       //   return new Response(
@@ -41,6 +46,6 @@ export async function youtubeController(
         )
     }
   } catch (err) {
-    return new Response ('There was a server error', {status: 500})
+    return withCors(JSON.stringify({ error: 'There was a server error' }), {status: 500})
   }
 }

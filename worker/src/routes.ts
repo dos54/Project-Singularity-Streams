@@ -2,6 +2,8 @@ import { membersController } from "./controllers/membersController";
 import { twitchController } from "./controllers/twitchController";
 import { youtubeController } from "./controllers/youtubeController";
 import type { Env } from "./env";
+import { withCors } from './utils/http'
+import { failureReason } from './utils/upstream'
 
 /** Router to handle requests */
 export async function routeRequest (
@@ -15,20 +17,20 @@ export async function routeRequest (
   try {
     switch (segments[0]) {
       case 'youtube':
-        return youtubeController(request, env, ctx)
+        return await youtubeController(request, env, ctx)
 
       case 'twitch':
-        return twitchController(request, env, ctx)
+        return await twitchController(request, env, ctx)
 
       case 'members':
-        return membersController(request, env, ctx)
+        return await membersController(request, env, ctx)
 
       default:
         return new Response("Not found", { status: 404 })
     }
 
   } catch (err) {
-    console.error('Error @ routeRequest:', err)
-    return new Response('There was a server-side error', { status: 500 })
+    console.error(JSON.stringify({ operation: 'public-read', path: url.pathname, reason: failureReason(err) }))
+    return withCors(JSON.stringify({ error: 'There was a server-side error' }), { status: 500 })
   }
 }

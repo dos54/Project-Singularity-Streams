@@ -2,6 +2,10 @@
  * Cloudflare Worker environment bindings.
  */
 export interface Env {
+  SERVICE_DISABLED?: string
+  COST_GUARDS_ENABLED?: string
+  READ_MISS_LIMITER?: RateLimit
+  WEBHOOK_LIMITER?: RateLimit
   TWITCH_CLIENT_ID: string
   TWITCH_CLIENT_SECRET: string
   YOUTUBE_API_KEY: string
@@ -11,6 +15,12 @@ export interface Env {
   TWITCH_API_BASE: string,
   DB: D1Database,
   ATOM_FEED_BASE: string,
+  YOUTUBE_PUSH_ENABLED?: string
+  YOUTUBE_FALLBACK_ENABLED?: string
+  YOUTUBE_CALLBACK_URL?: string
+  YOUTUBE_WEBHOOK_SECRET?: string
+  YOUTUBE_DIAGNOSTIC_PATH?: string
+  YOUTUBE_DIAGNOSTIC_EXPIRES?: string
 }
 
 export type Environment = 'dev' | 'production'
@@ -46,5 +56,5 @@ export const NON_LIVE_RECHECK_SECONDS = 300
 export const XML_PARSER_CONFIG = {
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
+  parseTagValue: false,
 } as const
-

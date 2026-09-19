@@ -20,6 +20,7 @@ import {
   patchVideoLiveStatus,
 } from '../db/videos'
 import { type VideoLiveStatus } from '../types/youtube'
+import { fetchUpstream } from '../utils/upstream'
 
 export async function syncFeed(env: Env) {
   // Get member list, map to Author object, then create a Map for efficient lookups
@@ -95,11 +96,7 @@ export async function fetchAtomFeed(env: Env, youtubeId: string): Promise<string
   const url = new URL(`${env.ATOM_FEED_BASE}/feeds/videos.xml`)
   url.searchParams.set('channel_id', youtubeId)
 
-  const res = await fetch(url)
-  if (!res.ok)
-    throw new Error(
-      `There was a problem fetching the Atom feed for ${youtubeId}. URL: ${url.toString()}`,
-    )
+  const res = await fetchUpstream(url)
   return res.text()
 }
 
@@ -110,7 +107,7 @@ export async function returnAllVideos(env: Env) {
 
 export function selectVideosNeedingRefresh(items: VideoWithLiveStatus[], nowMs: number): string[] {
   const inactiveMaxAgeMs = 30 * 60 * 1000 // 30 mins
-  const liveMaxAgeMs = 5 * 60 * 30 // 5 mins
+  const liveMaxAgeMs = 5 * 60 * 1000 // 5 mins
   return items
     .filter(
       (v) =>
@@ -139,10 +136,9 @@ export async function fetchLiveStatusesFromYoutube(env: Env, idsToRefresh: strin
       url.searchParams.set('id', batch.join(','))
       url.searchParams.set('key', env.YOUTUBE_API_KEY)
 
-      const resp = await fetch(url.toString())
+      const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(10_000), redirect: 'manual' })
       if (!resp.ok) {
-        const text = await resp.text()
-        console.error('Youtube videos.list error:',resp.status, text,'URL:',url.toString())
+        console.error('Youtube videos.list error:', resp.status)
         throw new Error(`Youtube videos.list error: ${resp.status}`)
       }
 

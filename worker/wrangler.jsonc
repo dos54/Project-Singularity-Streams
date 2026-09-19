@@ -2,6 +2,11 @@
   "name": "twitch-proxy",
   "main": "src/index.ts",
   "compatibility_date": "2025-11-10",
+  "limits": { "cpu_ms": 250 },
+  "ratelimits": [
+    { "name": "READ_MISS_LIMITER", "namespace_id": "26091911", "simple": { "limit": 6, "period": 60 } },
+    { "name": "WEBHOOK_LIMITER", "namespace_id": "26091912", "simple": { "limit": 120, "period": 60 } }
+  ],
   "observability": {
     "enabled": true
   },
@@ -29,6 +34,9 @@
   ],
 
   "vars": {
+    "COST_GUARDS_ENABLED": "true",
+    "YOUTUBE_PUSH_ENABLED": "false",
+    "YOUTUBE_CALLBACK_URL": "https://REPLACE-WITH-YOUR-WORKER.workers.dev/youtube/webhook",
     "TWITCH_CLIENT_ID": "bjrunh046oko3ckz2rl4bijz88xiow",
     "ENVIRONMENT": "production",
     "YT_API_BASE": "https://www.googleapis.com",
@@ -55,7 +63,10 @@
       ],
 
       "vars": {
+        "YOUTUBE_PUSH_ENABLED": "false",
+        "YOUTUBE_CALLBACK_URL": "https://REPLACE-WITH-STAGING-WORKER.workers.dev/youtube/webhook",
         "ENVIRONMENT": "dev",
+        "COST_GUARDS_ENABLED": "false",
         "TWITCH_CLIENT_ID": "bjrunh046oko3ckz2rl4bijz88xiow",
         "TWITCH_API_BASE": "http://10.0.0.100:4100",
         "YT_API_BASE": "http://10.0.0.100:4100",

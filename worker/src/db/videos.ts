@@ -16,11 +16,19 @@ export async function upsertVideos(env: Env, videos: Video[]) {
     ON CONFLICT (VideoId) DO UPDATE SET
       Title = excluded.Title,
       Description = excluded.Description,
-      IsProjectSingularity = excluded.IsProjectSingularity
+      IsProjectSingularity = excluded.IsProjectSingularity,
+      PublishedAt = excluded.PublishedAt,
+      ThumbnailUrl = excluded.ThumbnailUrl,
+      ThumbnailWidth = excluded.ThumbnailWidth,
+      ThumbnailHeight = excluded.ThumbnailHeight
     WHERE
       Videos.Title IS NOT excluded.Title OR
       Videos.Description IS NOT excluded.Description OR
-      Videos.IsProjectSingularity IS NOT excluded.IsProjectSingularity;
+      Videos.IsProjectSingularity IS NOT excluded.IsProjectSingularity OR
+      Videos.PublishedAt IS NOT excluded.PublishedAt OR
+      Videos.ThumbnailUrl IS NOT excluded.ThumbnailUrl OR
+      Videos.ThumbnailWidth IS NOT excluded.ThumbnailWidth OR
+      Videos.ThumbnailHeight IS NOT excluded.ThumbnailHeight;
   `)
 
   const CHUNK = 100
@@ -56,7 +64,24 @@ type VideoFilters = {
   limit?: number
 } & Partial<MemberFilter>
 
+// At most two small candidate sets are sorted, instead of the entire video history.
+export const RECENT_VIDEOS_SQL = `
+  WITH recent AS (
+    SELECT VideoId FROM Videos ORDER BY PublishedAt DESC LIMIT ?
+  ), live AS (
+    SELECT v.VideoId FROM VideoLiveStatus ls JOIN Videos v ON v.VideoId=ls.VideoId
+    WHERE ls.State='live' ORDER BY v.PublishedAt DESC LIMIT ?
+  ), candidates AS (SELECT VideoId FROM recent UNION SELECT VideoId FROM live)
+  SELECT v.MemberId,v.VideoId,v.Title,v.Description,v.PublishedAt,v.ThumbnailUrl,v.IsProjectSingularity,
+    COALESCE(ls.State,'video') AS State
+  FROM candidates c JOIN Videos v ON v.VideoId=c.VideoId
+  LEFT JOIN VideoLiveStatus ls ON ls.VideoId=v.VideoId
+  ORDER BY (COALESCE(ls.State,'video')='live') DESC,v.PublishedAt DESC LIMIT ?`
+
 export async function getAllVideos(env: Env, filters: VideoFilters = {}): Promise<VideoRowWithState[]> {
+  if (Object.keys(filters).length === 0) {
+    return (await env.DB.prepare(RECENT_VIDEOS_SQL).bind(100, 100, 100).all<VideoRowWithState>()).results
+  }
   // Filters here
   const where: string[] = []
   const params: unknown[] = [] //
@@ -73,7 +98,7 @@ export async function getAllVideos(env: Env, filters: VideoFilters = {}): Promis
       FROM Videos v
       LEFT JOIN VideoLiveStatus ls ON ls.VideoId = v.VideoId
       ${where.length ? `WHERE ${where.join(" AND ")}`: ""}
-      ORDER BY v.PublishedAt DESC
+      ORDER BY (COALESCE(ls.State, 'video') = 'live') DESC, v.PublishedAt DESC
       LIMIT ?;
   `
   params.push(limit)
@@ -133,7 +158,7 @@ export async function getLiveStatusesForVideoIds(env: Env, videoIds: string[]): 
 
   const data: VideoLiveStatusRow[] = []
 
-  const CHUNK = 16
+  const CHUNK = 90
   for (let i = 0; i < videoIds.length; i += CHUNK) {
     const slice = videoIds.slice(i, i + CHUNK)
     const values = slice.map(() => '?').join(',')
@@ -147,7 +172,7 @@ export async function getLiveStatusesForVideoIds(env: Env, videoIds: string[]): 
 }
 
 export async function patchVideoLiveStatus(env: Env, videoLiveStatuses: VideoLiveStatusRow[], now = Date.now()) {
-  if (videoLiveStatuses.length === 0) {console.log('Nothing to patch!'); return }
+  if (videoLiveStatuses.length === 0) return
 
   const stmt = env.DB.prepare(`
     UPDATE VideoLiveStatus
@@ -157,7 +182,8 @@ export async function patchVideoLiveStatus(env: Env, videoLiveStatuses: VideoLiv
       ActualStartTime = ?,
       ActualEndTime = ?,
       ActiveLiveChatId = ?,
-      ConcurrentViewers = ?
+      ConcurrentViewers = ?,
+      ScheduledStartTime = ?
     WHERE VideoId = ?
   `)
 
@@ -174,6 +200,7 @@ export async function patchVideoLiveStatus(env: Env, videoLiveStatuses: VideoLiv
           v.ActualEndTime,
           v.ActiveLiveChatId,
           v.ConcurrentViewers,
+          v.ScheduledStartTime ?? null,
           v.VideoId
         )
       )
@@ -181,6 +208,5 @@ export async function patchVideoLiveStatus(env: Env, videoLiveStatuses: VideoLiv
 
     const rows_read = res.reduce((sum, item) => sum + item.meta.rows_read, 0)
     const rows_written = res.reduce((sum, item) => sum + item.meta.rows_written, 0)
-    console.log(`Rows written: ${rows_written}\nRows read: ${rows_read}`)
   }
 }

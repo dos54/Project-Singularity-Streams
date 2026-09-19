@@ -16,11 +16,11 @@ function pickThumbnail(t?: AtomEntryThumbnail | AtomEntryThumbnail[]) {
 }
 
 export function atomEntryToVideo(entry: AtomEntry, author: Author): Video {
-  const thumbnail = pickThumbnail(entry['media:group']['media:thumbnail'])
+  const thumbnail = pickThumbnail(entry['media:group']?.['media:thumbnail'])
   return {
     id: entry['yt:videoId'],
     title: entry.title,
-    description: entry['media:group']['media:description'],
+    description: entry['media:group']?.['media:description'] ?? null,
     publishedAt: new Date(entry.published),
     isProjectSingularity: false,
     thumbnailUrl: thumbnail?.['@_url'] ?? null,
@@ -61,6 +61,7 @@ export function videoLiveStatusRowToVideoLiveStatus(ls: VideoLiveStatusRow): Vid
     actualEndTime: ls.ActualEndTime,
     activeLiveChatId: ls.ActiveLiveChatId,
     concurrentViewers: ls.ConcurrentViewers,
+    scheduledStartTime: ls.ScheduledStartTime ?? null,
   }
 }
 
@@ -73,6 +74,7 @@ export function videoLiveStatusToRow(ls: VideoLiveStatus): VideoLiveStatusRow {
     ActualEndTime: ls.actualEndTime,
     ActiveLiveChatId: ls.activeLiveChatId,
     ConcurrentViewers: ls.concurrentViewers,
+    ScheduledStartTime: ls.scheduledStartTime ?? null,
   }
 }
 
@@ -95,7 +97,9 @@ export function patchFromYoutubeItems(
       actualStartTime: yt.liveStreamingDetails?.actualStartTime ?? null,
       actualEndTime: yt.liveStreamingDetails?.actualEndTime ?? null,
       activeLiveChatId: yt.liveStreamingDetails?.activeLiveChatId ?? null,
-      concurrentViewers: yt.liveStreamingDetails?.concurrentViewers ?? null,
+      concurrentViewers: yt.liveStreamingDetails?.concurrentViewers != null
+        ? Number(yt.liveStreamingDetails.concurrentViewers) : null,
+      scheduledStartTime: yt.liveStreamingDetails?.scheduledStartTime ?? null,
     }
   })
 }
@@ -105,6 +109,7 @@ export function mapVideoRowToDto(row: VideoRowWithState): VideoResponseDto {
     memberId: row.MemberId,
     videoId: row.VideoId,
     title: row.Title,
+    description: row.Description ?? null,
     publishedAt:
       typeof row.PublishedAt === 'string'
         ? row.PublishedAt

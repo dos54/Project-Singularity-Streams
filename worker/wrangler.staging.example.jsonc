@@ -1,0 +1,30 @@
+{
+  "name": "singularity-streams-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-10",
+  "limits": { "cpu_ms": 250 },
+  "ratelimits": [
+    { "name": "READ_MISS_LIMITER", "namespace_id": "26091901", "simple": { "limit": 6, "period": 60 } },
+    { "name": "WEBHOOK_LIMITER", "namespace_id": "26091902", "simple": { "limit": 120, "period": 60 } }
+  ],
+  "observability": { "enabled": true },
+  "triggers": { "crons": ["*/2 * * * *"] },
+  "kv_namespaces": [{ "binding": "KV", "id": "REPLACE_WITH_STAGING_KV_ID" }],
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "singularitystream-staging-db",
+    "database_id": "REPLACE_WITH_STAGING_D1_ID",
+    "migrations_dir": "migrations"
+  }],
+  "vars": {
+    "COST_GUARDS_ENABLED": "true",
+    "ENVIRONMENT": "dev",
+    "YOUTUBE_PUSH_ENABLED": "false",
+    "YOUTUBE_FALLBACK_ENABLED": "true",
+    "YOUTUBE_CALLBACK_URL": "https://REPLACE-WITH-STAGING-WORKER.workers.dev/youtube/webhook",
+    "TWITCH_CLIENT_ID": "REPLACE_WITH_TWITCH_CLIENT_ID",
+    "YT_API_BASE": "https://www.googleapis.com",
+    "TWITCH_API_BASE": "https://api.twitch.tv",
+    "ATOM_FEED_BASE": "https://www.youtube.com"
+  }
+}
