@@ -9,6 +9,7 @@
   "scripts": {
     "dev:staging": "vite --mode staging --host 127.0.0.1",
     "build:staging": "npm run type-check && vite build --mode staging --outDir dist-staging",
+    "build:production": "npm run type-check && node scripts/build-production.mjs",
     "dev": "VITE_BUILD_DATE=$(date -u +\"%Y-%m-%d %H:%M UTC\") vite --host",
     "build": "run-p type-check \"build-only {@}\" -- && cp dist/index.html dist/404.html",
     "postbuild-only": "cp dist/index.html dist/404.html",

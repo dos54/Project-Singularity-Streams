@@ -2,7 +2,42 @@
 
 Status: local fixes validated; production has not been deployed or rerouted.
 
+## Current cutover progress (supersedes the original status above)
+
+- Production migration ledger baselined through 0005; user applied 0006–0008.
+- Updated production Worker deployed; Twitch HTTP 200 verified after secret correction.
+- Domain assignments verified through Cloudflare: `api.singularitystream.org` belongs
+  to `twitch-proxy`; `staging-api.singularitystream.org` belongs to
+  `singularity-streams-staging`. Both `/members` endpoints return 200 with 15 members.
+- Local production/staging routes and webhook callbacks now match these hostnames.
+  Redeploy both configurations to apply callback changes. Existing subscriptions
+  switch callbacks as renewed; polling fallback remains enabled.
+- Local `.env.staging` and CI staging build point to staging-api. Production's
+  workers.dev endpoint remains enabled during the old frontend transition.
+- Frontend publication and automatic production deployment remain pending.
+
+Frontend publishing preparation: `npm run build:production` now writes the reviewed
+artifact to ignored `dist-production`, with an explicit production API URL, build
+timestamp, CNAME, 404.html and .nojekyll. `.github/workflows/deploy-pages.yml` runs
+backend/frontend checks, builds, then deploys GitHub Pages on main pushes or manual
+main runs. Set repository Settings → Pages → Source to GitHub Actions before the
+first push. This workflow deploys the frontend only; Worker automation remains a
+separate pending step requiring scoped Cloudflare credentials. Do not use the old
+force-push package publish script alongside this workflow.
+
 ## Follow-up: promote code, retain history
+
+Migration preflight found an empty production `d1_migrations` ledger despite the
+original tables, indexes and all 15 members being present. After the backup, use
+`worker/operations/baseline-existing-production.sql` against production to record
+0001–0005 as already applied; then list pending migrations and expect only 0006–0008.
+Do not execute the original table creation or member seed again. The schema was
+checked read-only against sqlite_master on 2026-09-19; newer push tables/columns
+were absent. The baseline file is intentionally outside the migrations directory.
+
+Production also has Hecuba set to `@HecubaLive` (UCCJ4cFgBxQbyQ2BazCbTPgg), while
+the seed uses `@hecuba39` (UCJzyqivEVGq4NVOdpd8HLGg). Preserve production's edit;
+this is another reason not to overwrite the roster with staging/seed data.
 
 User confirmed Twitch livestreams work after the staging fix. Read-only D1 checks
 found 1,213 production video rows (1,213 unique IDs) versus 603 staging rows (603

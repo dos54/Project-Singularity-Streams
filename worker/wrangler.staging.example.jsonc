@@ -1,5 +1,8 @@
 {
   "name": "singularity-streams-staging",
+  "routes": [{ "pattern": "staging-api.singularitystream.org", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
   "main": "src/index.ts",
   "compatibility_date": "2025-11-10",
   "limits": { "cpu_ms": 250 },
@@ -21,7 +24,7 @@
     "ENVIRONMENT": "dev",
     "YOUTUBE_PUSH_ENABLED": "false",
     "YOUTUBE_FALLBACK_ENABLED": "true",
-    "YOUTUBE_CALLBACK_URL": "https://REPLACE-WITH-STAGING-WORKER.workers.dev/youtube/webhook",
+    "YOUTUBE_CALLBACK_URL": "https://staging-api.singularitystream.org/youtube/webhook",
     "TWITCH_CLIENT_ID": "REPLACE_WITH_TWITCH_CLIENT_ID",
     "YT_API_BASE": "https://www.googleapis.com",
     "TWITCH_API_BASE": "https://api.twitch.tv",
