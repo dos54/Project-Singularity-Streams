@@ -99,12 +99,17 @@ export async function handleYoutubeWebhook(req: Request, env: Env, callbackId: s
   const body = await boundedBody(req)
   if (!body) return respond('Payload too large', 413)
   // PubSubHubbub 0.4 specifies acknowledging but discarding invalid signatures.
-  if (!await verifySignature(body, req.headers.get('X-Hub-Signature'), env.YOUTUBE_WEBHOOK_SECRET!)) return respond(null, 204)
+  if (!await verifySignature(body, req.headers.get('X-Hub-Signature'), env.YOUTUBE_WEBHOOK_SECRET!)) {
+    console.warn(JSON.stringify({ operation: 'youtube-webhook', channelId: sub.ChannelId, reason: 'signature-rejected' }))
+    return respond(null, 204)
+  }
   let notices: VideoNotice[]
   try { notices = parseNotices(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(body), sub.ChannelId) }
   catch { return respond('Invalid notification', 400) }
   await enqueueNotices(env, notices, now)
   await env.DB.prepare('UPDATE YoutubeSubscriptions SET LastDeliveryAt=? WHERE CallbackId=?').bind(now, callbackId).run()
+  console.info(JSON.stringify({ operation: 'youtube-webhook', channelId: sub.ChannelId,
+    result: 'accepted', entries: notices.length }))
   // Success is returned only after work is durable. The next cron processes it.
   return respond(null, 204)
 }

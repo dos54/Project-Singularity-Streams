@@ -58,7 +58,8 @@ export async function processInbox(env: Env, now = Date.now()) {
     const response = await fetch(url, { signal: AbortSignal.timeout(10_000), redirect: 'manual' })
     if (!response.ok) throw new Error('upstream')
     const body = await response.json<{ items?: YoutubeItem[] }>()
-    if (!Array.isArray(body.items)) throw new Error('invalid response')
+    if (!Array.isArray(body.items) || body.items.some(item =>
+      !item || typeof item !== 'object' || typeof item.id !== 'string')) throw new Error('invalid response')
     items = body.items
   } catch {
     // Never log URLs, request objects or upstream bodies containing credentials.
@@ -90,18 +91,29 @@ export async function processInbox(env: Env, now = Date.now()) {
       continue
     }
     const snippet = item.snippet
-    if (snippet.channelId !== job.ChannelId || typeof snippet.title !== 'string' || !Number.isFinite(Date.parse(snippet.publishedAt))) {
+    const details = item.liveStreamingDetails
+    const thumbnail = snippet.thumbnails?.high ?? snippet.thumbnails?.medium ?? snippet.thumbnails?.default
+    const validDate = (value: unknown) => value == null ||
+      (typeof value === 'string' && Number.isFinite(Date.parse(value)))
+    const validDimension = (value: unknown) => value == null ||
+      (typeof value === 'number' && Number.isFinite(value) && value >= 0)
+    if (snippet.channelId !== job.ChannelId || typeof snippet.title !== 'string' ||
+        typeof snippet.publishedAt !== 'string' || !Number.isFinite(Date.parse(snippet.publishedAt)) ||
+        (snippet.description != null && typeof snippet.description !== 'string') ||
+        (thumbnail != null && (typeof thumbnail.url !== 'string' ||
+          !validDimension(thumbnail.width) || !validDimension(thumbnail.height))) ||
+        (details != null && (typeof details !== 'object' || Array.isArray(details) ||
+          (details.activeLiveChatId != null && typeof details.activeLiveChatId !== 'string') ||
+          !validDate(details.actualStartTime) || !validDate(details.actualEndTime) || !validDate(details.scheduledStartTime)))) {
       await retry(env, job, 'invalid-video-metadata', now)
       continue
     }
-    const thumbnail = snippet.thumbnails?.high ?? snippet.thumbnails?.medium ?? snippet.thumbnails?.default
     const video: Video = {
       id: job.VideoId, author, title: snippet.title, description: snippet.description ?? null,
       publishedAt: new Date(snippet.publishedAt), isProjectSingularity: false,
       thumbnailUrl: thumbnail?.url ?? null, thumbnailWidth: thumbnail?.width ?? null, thumbnailHeight: thumbnail?.height ?? null,
     }
     video.isProjectSingularity = isProjectSingularityVideo(video)
-    const details = item.liveStreamingDetails
     const viewers = details?.concurrentViewers == null ? null : Number(details.concurrentViewers)
     const status: VideoLiveStatus = {
       videoId: video.id, state: 'inactive' as VideoLiveStatus['state'], lastChecked: now,

@@ -1,22 +1,22 @@
 # YouTube push: setup and operation
 
-Staging push verification is still being investigated: public feeds returned 404 and Google's hub returned 503, including through its own form. Production push mode defaults to off. **Apply all migrations through 0007 before deploying this version.**
+Updated September 24, 2026 (Alaska). Production uses push mode with API fallback. The ten-minute RSS watchdog described below was deployed September 25 at approximately 01:18 UTC. See the [release review](2026-09-24-release-review.md) for the missing-stream diagnosis. The existing production database already has migrations through 0008; this change needs no new migration. A verified subscription does not prove notifications are arriving.
 
 ## API fallback
 
 ### Current staging domain
 
-`api.singularitystream.org` is currently attached to **singularity-streams-staging**, confirmed via Cloudflare's domain API. It is not the production API despite its name. The local staging Wrangler config records its custom-domain route and uses `https://api.singularitystream.org/youtube/webhook` as the callback. It explicitly disables workers.dev and preview URLs on the next staging deployment to close alternate entry points. The production Worker config is unchanged by this domain update.
+`api.singularitystream.org` is the production API for **twitch-proxy**. Staging uses `staging-api.singularitystream.org` for **singularity-streams-staging**. Use the matching Wrangler config and callback origin for each environment.
 
-The local ignored `.env.staging` sets `VITE_API_BASE_URL=https://api.singularitystream.org`. Use `npm run dev:staging` for local frontend testing, or `npm run build:staging` for a build in the ignored `dist-staging` directory. These commands do not publish GitHub Pages. Existing production build settings remain in effect for the normal production build. On another machine, create `.env.staging` with the same public URL before using these commands. A shell-provided `VITE_API_BASE_URL` overrides Vite's env file; remove any such override when testing staging.
+For local staging, set `VITE_API_BASE_URL=https://staging-api.singularitystream.org` in the ignored `.env.staging`. Use `npm run dev:staging` or `npm run build:staging`. These commands do not publish GitHub Pages. A shell-provided `VITE_API_BASE_URL` overrides the env file.
 
-After `npx wrangler deploy --config worker/wrangler.staging.jsonc`, use the custom hostname for testing. Existing automatic subscription attempts will use the new callback base. Moving this hostname to production later is an explicit cutover: give staging another hostname first, associate this hostname with production, update callbacks and frontend configuration, and verify routing and subscriptions. Do not deploy this staging config against production resources.
+After `npx wrangler deploy --config worker/wrangler.staging.jsonc`, use the staging hostname for testing. Do not move production's domain or deploy the staging config against production resources.
 
 Set `YOUTUBE_FALLBACK_ENABLED="true"` alongside push mode (enabled in the local staging config). A creator falls back when its verified lease is absent/expired or its feed health is failed/unknown. Both a successful feed check and an active verified lease are required to stop fallback. Silence is not an outage signal; this does not detect every silent delivery failure.
 
 The first poll is due immediately on the next cron, normally within two minutes, then every ten minutes. Browser refreshes and isolate startups do not trigger polling. Up to 15 due creators run per tick with concurrency three. Uploads playlist IDs are retrieved through `channels.list` and cached; `playlistItems.list` reads the latest 50 entries only. New IDs enter the existing inbox without resetting pending retries or re-enriching completed entries. Known live/upcoming checks continue separately. Initial enrichment processes 50 videos per cron, so a large backlog takes additional ticks.
 
-RSS probes are staggered at one creator per tick, eligible every 30 minutes while unhealthy/unverified, and every six hours when healthy and verified. Subscription renewals continue. API failures wait ten minutes before retrying.
+RSS checks run every ten minutes after success regardless of subscription health, and every thirty minutes after a feed failure. Each cron handles up to fifteen due feeds with concurrency three. Older six-hour schedules are shortened automatically using `FeedCheckedAt`. Unchanged feed notices are deduplicated; only new/newer events enqueue enrichment. Known live/upcoming videos are still checked independently. Subscription renewals continue, and API fallback failures wait ten minutes before retrying.
 
 Separate diagnostic fields are `FeedHealthy`, `FeedCheckedAt`, `FeedError`, `SubscriptionError`, `LastPollAt`, `PollAt`, and `PollError`. `LastError` is the legacy shared field. Logs with `operation="youtube-fallback"` report successful discovery or sanitized failures. `LastPollAt` does not mean every discovered video has finished enrichment.
 
@@ -36,7 +36,7 @@ flowchart LR
   H[YouTube hub] -->|signed Atom POST| W[Webhook: authenticate and validate]
   W -->|durable receipt| I[(D1 inbox)]
   C[Two-minute cron] --> R[Renew subscriptions]
-  C --> F[Reconcile one due channel]
+  C --> F[Check up to 15 due feeds]
   C --> L[Check known live/upcoming videos]
   F --> I
   L --> I
@@ -61,17 +61,17 @@ The D1 inbox holds one row per video, including completed rows as a delivery tim
 | Overlap protection | Atomic D1 lease; expires after five minutes following a crashed invocation |
 | Subscription requests | At most two per tick; request five days, renew at 80% of the actual granted lease |
 | Pending verification | Valid for ten minutes; retry subscription request after fifteen minutes if unverified/failed |
-| Reconciliation | One due channel per tick; healthy verified channels every six hours; unhealthy/unverified feeds every thirty minutes |
+| Reconciliation | Up to fifteen due channels per tick, concurrency three; successful feeds every ten minutes, failed feeds every thirty minutes |
 | Live status | Known live streams and upcoming streams within fifteen minutes of their planned start are eligible every two minutes |
 | Distant upcoming streams | Eligible every thirty minutes |
 | Enrichment | At most fifty due videos, one `videos.list` call per tick |
 | Retry | Per-video exponential delay from one minute, capped at six hours, plus up to ten seconds of jitter |
-| API omission | Retry eventual publication; after repeated omissions mark an existing video inactive and continue slower probes |
+| API omission | Revoke a missing video's live claim immediately, retain retries; after repeated omissions clear remaining live metadata and continue slower probes |
 | External request timeout | Ten seconds per request; redirects are rejected as unsuccessful responses |
 
 Queue backlogs, upstream outages, and cron timing can delay those nominal intervals. There is no immediate enrichment on the webhook HTTP request; normal discovery latency is up to roughly a cron interval plus existing response cache TTLs. This does not push updates into an already-open browser tab.
 
-For fifteen channels, normal reconciliation is approximately `15 × 4 × 30 = 1,800` feed requests per thirty days, versus `15 × 720 × 30 = 324,000` from polling every two minutes: about **99.4% fewer routine feed requests**. This excludes webhook deliveries, subscription traffic, retries, and live/enrichment API calls. The cron still invokes the Worker 21,600 times per thirty days. This is a request-count estimate, not a billing guarantee. Batches can exceed the free plan's per-invocation D1 query limit, and CPU must be measured in Cloudflare; use the paid tier until hosted measurements establish otherwise.
+For fifteen healthy feeds, reconciliation is approximately `15 × 144 = 2,160` requests/day or `64,800` per thirty days: **80% fewer** than checking all feeds every two minutes. The old six-hour estimate of 1,800/month is superseded because it left a large blind spot when push delivery failed silently. RSS does not use YouTube Data API quota. Unchanged entries do not trigger enrichment. These figures exclude renewals, webhook deliveries, fallback and live/enrichment API calls. Cron invocations remain 21,600 per thirty days. These are request estimates, not a billing guarantee; retain the paid-tier safeguards and measure hosted CPU and D1 usage.
 
 ## Local verification
 
@@ -101,7 +101,7 @@ For manual local Wrangler development, copy `worker/.dev.vars.example` to `worke
 
    Generate a cryptographically random webhook secret of 32–199 bytes; 32 random bytes encoded as hex is suitable. Keep it in a password manager and provide it at Wrangler's prompt. The YouTube key is separate from the webhook signing secret. The existing Twitch credentials are needed only for Twitch functionality.
 4. Set `YOUTUBE_CALLBACK_URL` to the staging Worker's public HTTPS origin plus `/youtube/webhook` (no trailing slash, query or fragment). Set `YOUTUBE_PUSH_ENABLED` to the literal string `true`. Deploy using `npx wrangler deploy --config worker/wrangler.staging.jsonc`.
-5. The cron creates subscriptions automatically. With fifteen channels, subscription requests span about sixteen minutes and the initial reconciliation spans about thirty minutes. For a one-channel smoke test, keep only that channel in the isolated staging Members table before enabling push. Confirm a real hub GET challenge, granted lease, signed POST, subsequent API enrichment, unchanged public response shape, and renewal. Synthetic tests cannot prove Google's deployed hub behavior.
+5. The cron creates subscriptions automatically. With fifteen channels, subscription requests span about sixteen minutes, while all initial feed checks can run on the first cron. Enrichment remains limited to fifty videos per cron, so initial backlog completion can take additional ticks. Confirm a real hub GET challenge, granted lease, signed POST, subsequent API enrichment, unchanged public response shape, and renewal. Synthetic tests cannot prove Google's deployed hub behavior.
 6. Verify a genuine upload/title edit and a stream's upcoming → live → ended progression. Check failures and quota use before production cutover. Staging is a separate installation and consumes its own API calls; it does not automatically compare records with production.
 
 ## Production activation and rollback
@@ -128,6 +128,8 @@ FROM YoutubeInbox WHERE Attempts > 0 ORDER BY NextAttemptAt LIMIT 50;
 ```
 
 Timestamps are Unix milliseconds. Watch expired subscriptions, an increasing overdue backlog, repeated failures, API quota, CPU, D1 reads/writes, and subrequest counts. `LastError` is the most recent failure diagnostic, not a standalone health flag; a reconciliation error can remain after a later successful feed fetch. Completed inbox rows intentionally accumulate one small row per discovered video to retain deduplication history.
+
+Structured `youtube-webhook` logs distinguish `result="accepted"` from `reason="signature-rejected"` without logging signing material. Successful `youtube-reconcile` logs include the channel, entry count, and next check time. `LastDeliveryAt=NULL` means no accepted notification has been recorded, even if the lease is valid. Quiet channels alone do not prove an outage. Google's detailed subscription diagnostic page requires the matching HMAC secret; omitting it produces a secret error, not evidence that the Worker's secret is incorrect.
 
 Reconciliation reads only each channel's recent feed, not its entire history. A long outage can miss videos that already fell out of that feed; full historical import is a separate operation. Private/deleted videos have no reliable documented push guarantee. Signed tombstones are treated as refresh hints and availability is confirmed through the API. The public state enum remains `live | video | inactive`.
 

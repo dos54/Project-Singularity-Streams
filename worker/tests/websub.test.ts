@@ -168,6 +168,26 @@ describe('YouTube push through the actual Worker and D1', () => {
     expect(await runtime.count('Videos')).toBe(0)
   })
 
+  it.each(['null-item', 'bad-description', 'bad-live-date', 'bad-thumbnail'])('backs off malformed YouTube data without crashing the cron: %s', async problem => {
+    await deliver()
+    runtime.upstream.youtubeBody = { items: problem === 'null-item' ? [null] : [{
+      id: videoId,
+      snippet: { channelId: channel, title: 'Project Singularity', publishedAt: '2026-01-01T00:00:00Z',
+        description: problem === 'bad-description' ? { unexpected: true } : '',
+        thumbnails: problem === 'bad-thumbnail' ? { high: { url: { unexpected: true } } } : undefined },
+      liveStreamingDetails: problem === 'bad-live-date' ? { actualStartTime: 'not-a-date' } : undefined,
+    }] }
+    await runtime.sync()
+    expect((await job())!.Attempts).toBe(1)
+    expect((await job())!.NextAttemptAt).toBeGreaterThan(Date.now())
+    expect(await runtime.count('Videos')).toBe(0)
+    runtime.upstream.youtubeBody = undefined
+    await runtime.db.prepare('UPDATE YoutubeInbox SET NextAttemptAt=0').run()
+    await runtime.sync()
+    expect((await job())!.NextAttemptAt).toBeNull()
+    expect(await runtime.count('Videos')).toBe(1)
+  })
+
   it('checks persisted upcoming/live videos even when they are absent from feeds', async () => {
     runtime.upstream.phase = 'upcoming'
     await deliver()
@@ -201,6 +221,41 @@ describe('YouTube push through the actual Worker and D1', () => {
     await runtime.sync()
     expect(await runtime.count('Videos')).toBe(1)
     expect((await job())!.NextAttemptAt).toBeNull()
+  })
+
+  it('discovers a missed live notification despite a healthy lease and legacy six-hour schedule', async () => {
+    runtime.upstream.phase = 'live'
+    const checked = Date.now() - 11 * 60_000
+    await runtime.db.prepare(`UPDATE YoutubeSubscriptions SET FeedHealthy=1,FeedCheckedAt=?,ReconcileAt=?
+      WHERE ChannelId=?`).bind(checked, Date.now() + 5 * 3600_000, channel).run()
+    expect(await runtime.count('YoutubeInbox')).toBe(0)
+    await runtime.sync()
+    expect(await runtime.db.prepare('SELECT State FROM VideoLiveStatus WHERE VideoId=?')
+      .bind(videoId).first('State')).toBe('live')
+    const sub = await runtime.db.prepare('SELECT FeedCheckedAt,ReconcileAt,LastDeliveryAt FROM YoutubeSubscriptions WHERE ChannelId=?')
+      .bind(channel).first<{ FeedCheckedAt: number; ReconcileAt: number; LastDeliveryAt: number | null }>()
+    expect(sub!.ReconcileAt - sub!.FeedCheckedAt).toBe(600_000)
+    expect(sub!.LastDeliveryAt).toBeNull()
+    expect(runtime.upstream.calls).toMatchObject({ atom: 1, youtube: 1 })
+    await runtime.sync()
+    expect(runtime.upstream.calls).toMatchObject({ atom: 1, youtube: 1 })
+  })
+
+  it('rechecks healthy feeds without repeatedly enriching unchanged entries', async () => {
+    await runtime.db.prepare('UPDATE YoutubeSubscriptions SET ReconcileAt=0 WHERE ChannelId=?').bind(channel).run()
+    await runtime.sync()
+    await runtime.db.prepare('UPDATE YoutubeSubscriptions SET ReconcileAt=0 WHERE ChannelId=?').bind(channel).run()
+    await runtime.sync()
+    expect(runtime.upstream.calls).toMatchObject({ atom: 2, youtube: 1 })
+    expect((await job())!.Revision).toBe(1)
+    runtime.upstream.entriesPerChannel = 2
+    runtime.upstream.phase = 'live'
+    await runtime.db.prepare('UPDATE YoutubeSubscriptions SET ReconcileAt=0 WHERE ChannelId=?').bind(channel).run()
+    await runtime.sync()
+    expect(runtime.upstream.calls).toMatchObject({ atom: 3, youtube: 2 })
+    expect(await runtime.db.prepare('SELECT State FROM VideoLiveStatus WHERE VideoId=?')
+      .bind(`${channel}-1`).first('State')).toBe('live')
+    expect((await job())!.Revision).toBe(1)
   })
 
   it('renews due leases using the persisted callback and does not repeat immediately', async () => {
@@ -245,11 +300,11 @@ describe('YouTube push through the actual Worker and D1', () => {
     await runtime.sync()
     expect(await runtime.count('YoutubeSubscriptions')).toBe(15)
     expect(runtime.upstream.subscriptions).toHaveLength(2)
-    expect(runtime.upstream.calls).toMatchObject({ atom: 1, youtube: 1 })
+    expect(runtime.upstream.calls).toMatchObject({ atom: 15, youtube: 1 })
     await runtime.sync()
     expect(await runtime.count('YoutubeSubscriptions')).toBe(15)
     expect(runtime.upstream.subscriptions).toHaveLength(4)
-    expect(runtime.upstream.calls).toMatchObject({ atom: 2, youtube: 2 })
+    expect(runtime.upstream.calls).toMatchObject({ atom: 15, youtube: 1 })
   })
 
   it('bounds backlog processing to one request of 50 IDs per tick', async () => {

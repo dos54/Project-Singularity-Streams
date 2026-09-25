@@ -1,7 +1,7 @@
 import type { Env } from '../env'
 import { fetchAtomFeed } from './youtubeService'
 import { callbackBase, parseNotices, renewSubscriptions } from './youtubeWebsub'
-import { enqueueRefresh, processInbox } from './youtubeInbox'
+import { enqueueNotices, enqueueRefresh, processInbox } from './youtubeInbox'
 import { failureReason } from '../utils/upstream'
 import { pollFallback } from './youtubeFallback'
 
@@ -25,16 +25,23 @@ export async function maintainYoutube(env: Env, now = Date.now()) {
     }
     await renewSubscriptions(env, now)
 
-    // Stagger reconciliation: one channel per tick, each channel once per six hours.
-    const sub = await env.DB.prepare(`SELECT s.ChannelId,s.LeaseExpiresAt FROM YoutubeSubscriptions s JOIN Members m ON m.YoutubeId=s.ChannelId
-      WHERE s.ReconcileAt<=? ORDER BY s.ReconcileAt,s.ChannelId LIMIT 1`).bind(now).first<{ ChannelId: string; LeaseExpiresAt: number }>()
-    if (sub) {
+    // A verified lease proves subscription acceptance, not delivery of every event.
+    // Check healthy feeds every ten minutes too. Bound work to 15 channels / 3 fetches
+    // at once. The second condition also shortens legacy six-hour schedules on deploy.
+    const { results: feeds } = await env.DB.prepare(`SELECT s.ChannelId FROM YoutubeSubscriptions s JOIN Members m ON m.YoutubeId=s.ChannelId
+      WHERE s.ReconcileAt<=? OR (s.FeedHealthy=1 AND (s.FeedCheckedAt IS NULL OR s.FeedCheckedAt<=?))
+      ORDER BY COALESCE(s.FeedCheckedAt,0),s.ChannelId LIMIT 15`)
+      .bind(now, now - 10 * MINUTE).all<{ ChannelId: string }>()
+    async function reconcile(sub: { ChannelId: string }) {
       try {
         const notices = parseNotices(await fetchAtomFeed(env, sub.ChannelId), sub.ChannelId)
-        await enqueueRefresh(env, notices, now)
+        // Replayed feed entries should not re-enrich every video or rewrite its metadata.
+        await enqueueNotices(env, notices, now)
         await env.DB.prepare(`UPDATE YoutubeSubscriptions SET ReconcileAt=?,FeedHealthy=1,FeedCheckedAt=?,FeedError=NULL
           WHERE ChannelId=?`)
-          .bind(now + (sub.LeaseExpiresAt > now ? 6 * 60 : 30) * MINUTE, now, sub.ChannelId).run()
+          .bind(now + 10 * MINUTE, now, sub.ChannelId).run()
+        console.info(JSON.stringify({ operation: 'youtube-reconcile', channelId: sub.ChannelId,
+          result: 'ok', entries: notices.length, nextCheckAt: now + 10 * MINUTE }))
       } catch (error) {
         // A failing feed does not prevent processing webhook deliveries or other channels.
         const reason = `reconciliation-${failureReason(error)}`
@@ -44,6 +51,7 @@ export async function maintainYoutube(env: Env, now = Date.now()) {
           .bind(now + 30 * MINUTE, reason, now, reason, sub.ChannelId).run()
       }
     }
+    for (let i = 0; i < feeds.length; i += 3) await Promise.all(feeds.slice(i, i + 3).map(reconcile))
 
     await pollFallback(env, now)
 

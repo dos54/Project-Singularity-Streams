@@ -28,6 +28,7 @@ export async function createRuntime(options: { push?: boolean; fallback?: boolea
     phase: 'video' as 'video' | 'upcoming' | 'live' | 'ended',
     failedChannels: new Set<string>(),
     youtubeStatus: 200,
+    youtubeBody: undefined as unknown,
     playlistStatus: 200,
     malformedPlaylist: false,
     omittedIds: new Set<string>(),
@@ -87,6 +88,7 @@ export async function createRuntime(options: { push?: boolean; fallback?: boolea
         await upstream.onYoutube?.()
         if (upstream.youtubeStatus !== 200)
           return new Response('Unavailable', { status: upstream.youtubeStatus })
+        if (upstream.youtubeBody !== undefined) return Response.json(upstream.youtubeBody)
         const details =
           upstream.phase === 'video'
             ? undefined

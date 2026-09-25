@@ -10,6 +10,7 @@ describe('API fallback through scheduled Worker and real D1', () => {
     await runtime.db.prepare(`INSERT INTO YoutubeSubscriptions(ChannelId,CallbackId,RenewAt,ReconcileAt)
       SELECT YoutubeId,YoutubeId,?,? FROM Members WHERE YoutubeId IS NOT NULL`)
       .bind(Date.now() + 86400_000, Date.now() + 86400_000).run()
+    await runtime.db.prepare('UPDATE YoutubeSubscriptions SET FeedCheckedAt=?').bind(Date.now()).run()
   })
   afterEach(async () => {
     await runtime.mf.dispose()
