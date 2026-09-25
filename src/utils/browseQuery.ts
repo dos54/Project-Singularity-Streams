@@ -1,5 +1,6 @@
 import { parsePageSize } from './preferences'
 export interface BrowseFilters {
+  platform: 'all' | 'youtube' | 'twitch'
   q: string
   creators: number[] | null
   streamCreators: number[] | null
@@ -9,6 +10,7 @@ export interface BrowseFilters {
   page: number
 }
 export const defaultFilters: BrowseFilters = {
+  platform: 'all',
   q: '',
   creators: null,
   streamCreators: null,
@@ -37,6 +39,7 @@ export function parseBrowseQuery(
   const page =
     typeof query.page === 'string' && /^\d+$/.test(query.page) ? Number(query.page) : base.page
   return {
+    platform: query.platform === 'youtube' || query.platform === 'twitch' || query.platform === 'all' ? query.platform : base.platform,
     q: typeof query.q === 'string' ? query.q.slice(0, 200) : base.q,
     creators: 'creators' in query ? parseCreators(query.creators) : base.creators,
     streamCreators:
@@ -51,6 +54,7 @@ export function serializeBrowse(filters: BrowseFilters): Record<string, string> 
   const selection = (ids: number[] | null) =>
     ids === null ? '' : ids.length ? ids.join(',') : 'none'
   return {
+    platform: filters.platform,
     q: filters.q || '',
     creators: selection(filters.creators),
     streamCreators: selection(filters.streamCreators),

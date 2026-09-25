@@ -10,6 +10,7 @@ import { maintainYoutube } from './services/youtubeMaintenance'
 import { handleDiagnosticSubscriber } from './services/youtubeDiagnostic'
 import { costGuard } from './middleware/costGuard'
 import { uploadParameters } from './services/uploadPages'
+import { maintainTwitchVideos } from './services/twitchVideos'
 
 /**
  * Cloudflare Worker entry point and router.
@@ -38,7 +39,7 @@ export default {
 
     // These endpoints are anonymous snapshots; no query or credential affects the result.
     const url = new URL(req.url)
-    if (!['/members', '/youtube/videos', '/youtube/uploads', '/twitch/livestreams'].includes(url.pathname)) {
+    if (!['/members', '/youtube/videos', '/youtube/uploads', '/twitch/livestreams', '/twitch/videos'].includes(url.pathname)) {
       return new Response('Not found', { status: 404 })
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -69,5 +70,6 @@ export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     if (env.SERVICE_DISABLED === 'true') return
     ctx.waitUntil(env.YOUTUBE_PUSH_ENABLED === 'true' ? maintainYoutube(env) : syncFeed(env))
+    ctx.waitUntil(maintainTwitchVideos(env))
   },
 }

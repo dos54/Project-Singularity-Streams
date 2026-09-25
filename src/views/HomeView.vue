@@ -245,6 +245,24 @@
                 </option>
               </select></label
             >
+            <label class="platform-filter"
+              >Platform<select
+                aria-label="Video platform"
+                :value="filters.platform"
+                @change="
+                  browse.update({
+                    platform: ($event.target as HTMLSelectElement).value as
+                      | 'all'
+                      | 'youtube'
+                      | 'twitch',
+                  })
+                "
+              >
+                <option value="all">All platforms</option>
+                <option value="youtube">YouTube</option>
+                <option value="twitch">Twitch</option>
+              </select></label
+            >
           </div>
           <button type="button" class="text-button share-button" @click="prepareShare">
             Share filtered list
@@ -267,6 +285,9 @@
             Showing {{ filteredVideos.length }} of {{ uploads.videos.value.length }} loaded videos{{
               uploads.nextCursor.value ? ' · More history available' : ''
             }}
+          </p>
+          <p v-if="uploads.twitchWarning.value" role="status" class="section-hint">
+            {{ uploads.twitchWarning.value }}
           </p>
           <p class="freshness">
             {{ receivedAgo(uploads.headReceivedAt.value, refresh.now.value)
@@ -427,6 +448,7 @@ const filteredVideos = computed(() => {
   const query = filters.q.trim().toLocaleLowerCase()
   return uploads.videos.value.filter(
     (video) =>
+      (filters.platform === 'all' || (video.platform ?? 'youtube') === filters.platform) &&
       (!filters.project || video.isProjectSingularity) &&
       (filters.creators === null || filters.creators.includes(video.memberId)) &&
       (!personal.videoFavorites || preferences.favoriteIds.includes(video.memberId)) &&
@@ -570,7 +592,7 @@ function resetStreamFilters() {
 function resetVideoFilters() {
   personal.videoFavorites = false
   preferences.setMode('video-favorites', false)
-  browse.update({ q: '', creators: null, project: false })
+  browse.update({ q: '', creators: null, project: false, platform: 'all' })
 }
 async function loadHistory() {
   await keepPosition(() => uploads.loadAll())
@@ -732,6 +754,7 @@ summary:focus-visible {
   margin-bottom: 12px;
 }
 .video-filters label,
+.platform-filter,
 .share-panel label {
   display: grid;
   gap: 6px;
@@ -743,6 +766,7 @@ summary:focus-visible {
 }
 .video-filters input,
 .video-filters select,
+.platform-filter select,
 .share-panel input {
   color: inherit;
   background: #172126;

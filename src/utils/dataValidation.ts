@@ -14,6 +14,8 @@ export function isVideo(value: unknown): value is YoutubeVideo {
     isRecord(value) &&
     typeof value.videoId === 'string' &&
     !!value.videoId &&
+    (value.platform === undefined || value.platform === 'youtube' ||
+      (value.platform === 'twitch' && /^twitch:\d+$/.test(value.videoId))) &&
     memberId(value.memberId) &&
     optionalText(value.title) &&
     optionalText(value.description) &&

@@ -38,6 +38,9 @@ export async function createRuntime(options: { push?: boolean; fallback?: boolea
     hubStatus: 202,
     twitchStatuses: [] as number[],
     invalidTwitch: false,
+    vodPages: [{ data: [], pagination: {} }] as unknown[],
+    vodStatus: 200,
+    vodCalls: 0,
     calls: { atom: 0, youtube: 0, twitch: 0, token: 0, channels: 0, playlists: 0 },
     unexpected: [] as string[],
   }
@@ -124,6 +127,7 @@ export async function createRuntime(options: { push?: boolean; fallback?: boolea
         return Response.json({
           data: [
             {
+              id: 'live-stream',
               user_login: 'DUCKEDGTNH',
               thumbnail_url: 'https://static-cdn.jtvnw.net/previews-ttv/live_user_duckedgtnh-{width}x{height}.jpg',
               title: 'Project Singularity',
@@ -132,6 +136,15 @@ export async function createRuntime(options: { push?: boolean; fallback?: boolea
             },
           ],
         })
+      }
+      if (url.origin === testBindings.TWITCH_API_BASE && url.pathname === '/helix/users') {
+        return Response.json({ data: url.searchParams.getAll('login').map(login => ({ login, id: `id-${login}` })) })
+      }
+      if (url.origin === testBindings.TWITCH_API_BASE && url.pathname === '/helix/videos') {
+        upstream.vodCalls++
+        if (upstream.vodStatus !== 200) return new Response('Unavailable', { status: upstream.vodStatus })
+        const page = Number(url.searchParams.get('after') ?? 0)
+        return Response.json(upstream.vodPages[page] ?? { data: [], pagination: {} })
       }
       upstream.unexpected.push(`${request.method} ${url.origin}${url.pathname}`)
       throw new Error('Unexpected outbound request blocked by test runtime')

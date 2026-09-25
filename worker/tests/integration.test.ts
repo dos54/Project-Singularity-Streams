@@ -63,7 +63,7 @@ describe('Worker + real local D1 + mocked upstream services', () => {
     expect(videos.every((v) => v.isProjectSingularity && v.state === 'video')).toBe(true)
     const dates = videos.map((v) => v.publishedAt)
     expect(dates).toEqual([...dates].sort().reverse())
-    expect(runtime.upstream.calls).toEqual({ atom: 15, youtube: 1, twitch: 0, token: 0, channels: 0, playlists: 0 })
+    expect(runtime.upstream.calls).toEqual({ atom: 15, youtube: 1, twitch: 1, token: 1, channels: 0, playlists: 0 })
   })
 
   it('keeps repeated unchanged imports idempotent and avoids extra status API calls', async () => {

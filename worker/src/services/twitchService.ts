@@ -96,19 +96,7 @@ export async function fetchTwitchLivestreams(env: Env): Promise<TwitchResult[]> 
   const url = new URL('/helix/streams', env.TWITCH_API_BASE)
   url.searchParams.set('first', '100')
   for (const login of logins) url.searchParams.append('user_login', login)
-  let token = await getAppToken(env)
-  const request = () => fetchUpstream(url, { headers: {
-    'Client-Id': env.TWITCH_CLIENT_ID, Authorization: `Bearer ${token}`,
-  } })
-  let twitchResp: Response
-  try { twitchResp = await request() }
-  catch (error) {
-    if (!(error instanceof UpstreamError) || error.reason !== 'http-401') throw error
-    // App tokens cannot be refreshed; acquire a replacement once after rejection.
-    if (cachedToken === token) { cachedToken = null; tokenExpiresAt = 0 }
-    token = await getAppToken(env)
-    twitchResp = await request()
-  }
+  const twitchResp = await twitchRequest(env, url)
   const body = (await twitchResp.json().catch(() => { throw new Error('Invalid Twitch streams response') })) as TwitchAPIResponse
   if (!Array.isArray(body.data) || body.data.some(s => typeof s.user_login !== 'string')) {
     throw new Error('Invalid Twitch streams response')
@@ -131,4 +119,22 @@ export async function fetchTwitchLivestreams(env: Env): Promise<TwitchResult[]> 
         ? stream.thumbnail_url.replaceAll('{width}', '640').replaceAll('{height}', '360') : null,
     }
   })
+}
+
+/** Shared bounded authentication retry for Helix reads. */
+export async function twitchRequest(env: Env, url: URL): Promise<Response> {
+  let token = await getAppToken(env)
+  const request = () => fetchUpstream(url, { headers: {
+    'Client-Id': env.TWITCH_CLIENT_ID, Authorization: `Bearer ${token}`,
+  } })
+  let twitchResp: Response
+  try { twitchResp = await request() }
+  catch (error) {
+    if (!(error instanceof UpstreamError) || error.reason !== 'http-401') throw error
+    // App tokens cannot be refreshed; acquire a replacement once after rejection.
+    if (cachedToken === token) { cachedToken = null; tokenExpiresAt = 0 }
+    token = await getAppToken(env)
+    twitchResp = await request()
+  }
+  return twitchResp
 }

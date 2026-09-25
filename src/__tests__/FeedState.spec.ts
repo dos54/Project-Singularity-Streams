@@ -9,6 +9,12 @@ import { readVideoCache, writeVideoCache } from '../utils/videoCache'
 import { apiKey } from '../utils/browserState'
 import type { YoutubeVideo } from '../types/youtube'
 
+// These tests cover the permanent YouTube archive; Twitch replacement semantics have a separate suite.
+vi.mock('../composables/useTwitchVideos', async () => {
+  const { ref } = await import('vue')
+  return { useTwitchVideos: () => ({ videos: ref([]), warning: ref(''), refresh: async () => {}, clearCache: () => true }) }
+})
+
 function video(id: number): YoutubeVideo {
   return {
     videoId: String(id),

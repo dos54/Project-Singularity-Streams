@@ -15,6 +15,13 @@ const global = { stubs: { VCard: { template: '<article><slot /></article>' }, VC
 beforeEach(() => { setActivePinia(createPinia()) })
 
 describe('video and streaming cards', () => {
+  it('links Twitch recordings and creators to Twitch without changing YouTube links', () => {
+    useMemberStore().members = [user]
+    const wrapper = mount(NewVideoList, { global, props: { video: { ...video, platform: 'twitch', videoId: 'twitch:123' } } })
+    expect(wrapper.find('.video-link').attributes('href')).toBe('https://www.twitch.tv/videos/123')
+    expect(wrapper.find('.creator-link').attributes('href')).toBe('https://www.twitch.tv/creator')
+    expect(wrapper.find('.platform-badge').text()).toBe('Twitch')
+  })
   it('shows normalized Discord invites only for members with a valid link', async () => {
     const wrapper = mount(MemberList, { global, props: { user: { ...user, discordInvite: 'discord.gg/ufa5xm9PK7' } } })
     expect(wrapper.findAll('a').find(a => a.text() === 'Discord')?.attributes('href')).toBe('https://discord.gg/ufa5xm9PK7')

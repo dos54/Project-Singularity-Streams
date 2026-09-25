@@ -1,4 +1,5 @@
-import { onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
+import { useTwitchVideos } from './useTwitchVideos'
 import type { YoutubeVideo } from '@/types/youtube'
 import { readVideoCache, writeVideoCache, clearVideoCache } from '@/utils/videoCache'
 import { apiKey, validTime } from '@/utils/browserState'
@@ -12,6 +13,7 @@ const useUploadMemory = defineStore('upload-memory', () => ({
 }))
 
 export function useUploads() {
+  const twitch = useTwitchVideos()
   const memory = useUploadMemory()
   const videos = ref<YoutubeVideo[]>([])
   const nextCursor = ref<string | null>(null)
@@ -139,16 +141,18 @@ export function useUploads() {
   }
   async function clearCache() {
     const cleared = await clearVideoCache(apiKey)
+    const twitchCleared = twitch.clearCache()
     if (cleared) memory.snapshot = null
     storageWarning.value = !cleared
-    return cleared
+    return cleared && twitchCleared
   }
   onUnmounted(() => {
     disposed = true
     cancel()
   })
   return {
-    videos,
+    videos: computed(() => [...videos.value, ...twitch.videos.value].sort(compareVideos)),
+    twitchWarning: twitch.warning,
     nextCursor,
     headReceivedAt,
     archiveReceivedAt,
@@ -158,8 +162,8 @@ export function useUploads() {
     error,
     storageWarning,
     retryAt,
-    initialize,
-    refresh: () => load(),
+    initialize: async () => { const [result] = await Promise.all([initialize(), twitch.refresh()]); return result },
+    refresh: async () => { const [result] = await Promise.all([load(), twitch.refresh()]); return result },
     loadAll: () => load(false, nextCursor.value ? 500 : 100, true),
     cancel,
     clearCache,

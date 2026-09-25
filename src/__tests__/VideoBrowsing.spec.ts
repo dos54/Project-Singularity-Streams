@@ -60,7 +60,7 @@ it('filters and paginates locally, saves preferences, and lets the URL override 
                 { memberId: 2, alias: 'Finch' },
               ],
             }
-          : url.includes('/twitch')
+          : url.includes('/twitch/videos') ? { videos: [], stale: false } : url.includes('/twitch')
             ? { liveStreams: [] }
             : { videos: [] },
   }))

@@ -2,6 +2,7 @@ import type { Env } from '../env'
 
 import { fetchTwitchLivestreams } from '../services/twitchService'
 import { withCors } from '../utils/http'
+import { readTwitchVideos } from '../services/twitchVideos'
 
 export async function twitchController(
   request: Request,
@@ -12,6 +13,10 @@ export async function twitchController(
   const segments = url.pathname.split('/').filter(Boolean)
 
   switch (segments[1]) {
+    case 'videos':
+      return withCors(JSON.stringify(await readTwitchVideos(env)), {
+        headers: { 'Cache-Control': 'public, max-age=60' },
+      })
     case 'livestreams':
       const liveStreams = await fetchTwitchLivestreams(env)
       return withCors(JSON.stringify({ liveStreams }), {

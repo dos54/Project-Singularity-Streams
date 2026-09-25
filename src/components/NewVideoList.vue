@@ -1,7 +1,7 @@
 <template>
   <v-card variant="elevated" color="primary" class="video-card">
     <a
-      :href="`https://www.youtube.com/watch?v=${encodeURIComponent(video.videoId)}`"
+      :href="watchUrl"
       target="_blank"
       rel="noopener"
       class="video-link"
@@ -11,6 +11,7 @@
     </a>
 
     <v-card-subtitle>
+      <span class="platform-badge">{{ video.platform === 'twitch' ? 'Twitch' : 'YouTube' }}</span>
       <a v-if="creatorUrl" :href="creatorUrl" target="_blank" rel="noopener" class="creator-link">{{
         memberAlias
       }}</a>
@@ -88,9 +89,14 @@ watch(
 )
 
 const memberStore = useMemberStore()
+const watchUrl = computed(() => props.video.platform === 'twitch'
+  ? `https://www.twitch.tv/videos/${encodeURIComponent(props.video.videoId.slice(7))}`
+  : `https://www.youtube.com/watch?v=${encodeURIComponent(props.video.videoId)}`)
 const { membersById } = storeToRefs(memberStore)
 const creatorUrl = computed(() => {
   const member = membersById.value[props.video.memberId]
+  if (props.video.platform === 'twitch') return member?.twitch
+    ? `https://www.twitch.tv/${encodeURIComponent(member.twitch)}` : null
   if (member?.youtubeId)
     return `https://www.youtube.com/channel/${encodeURIComponent(member.youtubeId)}`
   if (member?.youtube)
@@ -123,6 +129,7 @@ const formattedDate = computed(() => {
 .video-card {
   border-radius: 12px;
 }
+.platform-badge { display: inline-block; margin-right: 8px; font-size: 0.75rem; font-weight: 600; }
 .video-link {
   color: inherit;
   text-decoration: none;
